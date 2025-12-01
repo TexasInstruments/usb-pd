@@ -23,21 +23,13 @@ The code examples in the repository are meant to serve as a reference for interf
 
 - [**TPS26750**](https://www.ti.com/product/TPS26750) - USB Type-C® and USB Power Delivery (PD) 3.2 controller with 240W extended power-range support
 
-The majority of the code examples will leverage communication using the host interface of the USB-PD controllers listed above (over I2C). To interact with the host interface, simple jumper wire can be used to connect the EVM of the corresponding MCU to the EVM of the USB-PD controller.  Each USB-PD controller will have the I2C signals of the host interface brought out to a specific header. Examples of how to do this can be seen below.
+The majority of the code examples will leverage communication using the host interface of the USB-PD controllers listed above (over I2C). To interact with the host interface, simple jumper wire can be used to connect the EVM of the corresponding MCU to the EVM of the USB-PD controller.  Each USB-PD controller will have the I2C signals of the host interface brought out to a specific header. An example of how to do this  on the TPS25730EVM can be seen below.
 
-Note that in the pictures below, the blue wire represents the I2C SDA line and the green wire represents the I2C SCL line (with black being ground).
+Note that in the pictures below, the red wire represents the I2C SDA line and the green wire represents the I2C SCL line (with yellow being ground).
 
 ##### **[TPS25730EVM](https://www.ti.com/tool/TPS25730EVM)**
 
-![TPS25730EVM](doc/tps25730evm.jpg "TPS25730EVM Connections")
-
-##### [TPS25751EVM](https://www.ti.com/tool/TPS25751EVM)
-
-![TPS25751EVM](doc/tps25751evm.jpg "TPS25751EVM Connections")
-
-##### [TPS26750EVM](https://www.ti.com/tool/TPS26750EVM)
-
-![TPS26750EVM](doc/tps26750evm.jpg "TPS26750EVM Connections")
+![TPS25730EVM](./doc/370.jpg "TPS25730EVM Connections")
 
 ## Build Instructions
 

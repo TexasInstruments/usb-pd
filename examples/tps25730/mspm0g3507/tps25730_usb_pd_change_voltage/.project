@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>tps25730_usb_pd_change_voltage</name>
+	<comment></comment>
+	<projects>
+		<project>freertos_builds_LP_MSPM0G3507_release_ticlang</project>
+	</projects>
+	<buildSpec>
+		<buildCommand>
+			<name>org.eclipse.cdt.managedbuilder.core.genmakebuilder</name>
+			<arguments>
+			</arguments>
+		</buildCommand>
+	</buildSpec>
+	<natures>
+		<nature>com.ti.ccstudio.core.ccsNature</nature>
+		<nature>org.eclipse.cdt.core.cnature</nature>
+		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
+		<nature>org.eclipse.cdt.core.ccnature</nature>
+	</natures>
+	<linkedResources>
+		<link>
+			<name>ti/display/Display.c</name>
+			<type>1</type>
+			<locationURI>COM_TI_MSPM0_SDK_INSTALL_DIR/source/ti/display/Display.c</locationURI>
+		</link>
+		<link>
+			<name>ti/display/Display.h</name>
+			<type>1</type>
+			<locationURI>COM_TI_MSPM0_SDK_INSTALL_DIR/source/ti/display/Display.h</locationURI>
+		</link>
+		<link>
+			<name>ti/display/DisplayUart.c</name>
+			<type>1</type>
+			<locationURI>COM_TI_MSPM0_SDK_INSTALL_DIR/source/ti/display/DisplayUart.c</locationURI>
+		</link>
+		<link>
+			<name>ti/display/DisplayUart.h</name>
+			<type>1</type>
+			<locationURI>COM_TI_MSPM0_SDK_INSTALL_DIR/source/ti/display/DisplayUart.h</locationURI>
+		</link>
+	</linkedResources>
+</projectDescription>
