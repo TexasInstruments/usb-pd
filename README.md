@@ -31,6 +31,14 @@ Note that in the pictures below, the red wire represents the I2C SDA line and th
 
 ![TPS25730EVM](./doc/370.jpg "TPS25730EVM Connections")
 
+An example using the TPS25751EVM can be seen below:
+
+##### **[TPS25751EVM](https://www.ti.com/tool/TPS25730EVM)**
+
+![TPS25730EVM](./doc/751.jpg "TPS25751EVM Connections")
+
+Note in this case the extra orange cable is for I2C interrupt.
+
 ## Build Instructions
 
 Each code example is built  with the corresponding IDE of the MCU that it is supporting.   Currently, the following MCU architectures are supported.
