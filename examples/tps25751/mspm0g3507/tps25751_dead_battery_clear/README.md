@@ -29,6 +29,8 @@ Please refer to the build instructions included in the root of the examples repo
 
 This code example was built using the [MSP M0 SDK](https://www.ti.com/tool/MSPM0-SDK) **v2_06_00_05** and [Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) **v20.4.0.13**. This code example leverages TI-Drivers for UART logging and I2C communication as well as the FreeRTOS kernel included in the MSPM0 SDK.
 
+Note that the device configuration file that is used to setup the TPS25751EVM has been checked into this repository in the [config.json](https://github.com/TexasInstruments/usb-pd/blob/main/examples/tps25751/mspm0g3507/tps25751_dead_battery_clear/config.json) file. You can use this JSON file with the [USB Configuration Tool](https://dev.ti.com/gallery/view/USBPD/USBCPD_Application_Customization_Tool/) as described in the [TPS25751EVM's User's Guide](https://www.ti.com/lit/pdf/SLVUCP9).
+
 ## Usage
 
 This code example takes the register structures of the TPS25751's host interface (as described in the [TPS25751 Technical User's Manual](https://www.ti.com/lit/pdf/slvucr8)) and represents them in a standard C header file. The sink capabilities register, for example:
@@ -96,7 +98,6 @@ Next, the code example will ensure that the ***Plug Insert or Removal*** bit is 
         Display_printf(display, 0, 0, "Plug event detected! Clearing flag.");
 
         /* If there is a plug event, clear the plug event flag */
-        curEventRegister.plugInsertRemoval = 0;
         curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
         memcpy(&curWriteCommand.registerData, &curEventRegister, sizeof(tIntEventRegister));
         i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
@@ -107,6 +108,7 @@ Next, the code example will ensure that the ***Plug Insert or Removal*** bit is 
             Display_printf(display, 0, 0, "Error clearing interrupt event registers!");
             goto DEAD_BATTERY_TASK_START;
         }
+        curEventRegister.plugInsertRemoval = 0;
 ```
 
 Next, as a plug event has occured and it has been established that we have a valid I2C target connection, we issue a read to the ***Boot Flags register (0x2D)*** and check to see if the ***Dead Battery Flag*** has been set:

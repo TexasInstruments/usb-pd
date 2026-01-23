@@ -141,9 +141,9 @@ DEAD_BATTERY_TASK_START:
         Display_printf(display, 0, 0, "Plug event detected! Clearing flag.");
 
         /* If there is a plug event, clear the plug event flag */
-        curEventRegister.plugInsertRemoval = 0;
         curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
         memcpy(&curWriteCommand.registerData, &curEventRegister, sizeof(tIntEventRegister));
+        i2cTransaction.writeBuf = &curWriteCommand;
         i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
         i2cTransaction.readCount = 0;
         
@@ -152,7 +152,8 @@ DEAD_BATTERY_TASK_START:
             Display_printf(display, 0, 0, "Error clearing interrupt event registers!");
             goto DEAD_BATTERY_TASK_START;
         }
-
+        curEventRegister.plugInsertRemoval = 0;
+        
         Display_printf(display, 0, 0, "Reading boot flags register...");
         addrReg = TPS25751_BOOT_FLAGS_REG;
         i2cTransaction.writeBuf   = &addrReg;
