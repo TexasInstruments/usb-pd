@@ -33,7 +33,7 @@ Note that the device configuration file that is used to setup the TPS25751EVM ha
 
 ## Usage
 
-This code example takes the register structures of the TPS25751's host interface (as described in the [TPS25751 Technical User's Manual](https://www.ti.com/lit/pdf/slvucr8)) and represents them in a standard C header file. The sink capabilities register, for example:
+This code example takes the register structures of the TPS25751's host interface (as described in the [TPS25751 Technical User's Manual](https://www.ti.com/lit/pdf/slvucr8)) and represents them in a standard C header file. The boot flags register, for example:
 
 ![TPS25730EVM](./doc/bootflags.png "Boot Flags")
 
