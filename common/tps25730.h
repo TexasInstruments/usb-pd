@@ -29,8 +29,8 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __TI_USB_PDO
-#define __TI_USB_PDO
+#ifndef __TPS25730__H__
+#define __TPS25730__H__
 
 #include <stdint.h>
 

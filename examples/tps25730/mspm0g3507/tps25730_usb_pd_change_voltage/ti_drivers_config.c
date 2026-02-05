@@ -186,31 +186,15 @@ GPIO_PinConfig gpioPinConfigs[60] = {
     GPIO_CFG_INPUT | GPIO_DO_NOT_CONFIG, /* PB27 */
 };
 
-/*
- *  ======== gpioCallbackFunctions ========
- *  Array of callback function pointers
- *  Change at runtime with GPIO_setCallback()
- */
-GPIO_CallbackFxn gpioCallbackFunctions[60];
+/* This is an interrupt example, use callbacks */
+GPIO_CallbackFxn gpioCallbackFunctions[60] = {0};
 
-/*
- *  ======== gpioUserArgs ========
- *  Array of user argument pointers
- *  Change at runtime with GPIO_setUserArg()
- *  Get values with GPIO_getUserArg()
- */
 void *gpioUserArgs[60];
 
-const uint_least8_t CONFIG_GPIO_LED_0_CONST = CONFIG_GPIO_LED_0;
-
-/*
- *  ======== GPIO_config ========
- */
 const GPIO_Config GPIO_config = {.configs = (GPIO_PinConfig *) gpioPinConfigs,
     .callbacks   = (GPIO_CallbackFxn *) gpioCallbackFunctions,
     .userArgs    = gpioUserArgs,
     .intPriority = (~0)};
-
 /*
  *  =============================== I2C ===============================
  */

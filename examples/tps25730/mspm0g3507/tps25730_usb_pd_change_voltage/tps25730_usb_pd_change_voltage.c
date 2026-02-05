@@ -43,7 +43,7 @@
 #include "ti_drivers_config.h"
 
 /* USB Configuration */
-#include "usb_pdo.h"
+#include "tps25730.h"
 
 /* I2C target addresses */
 const uint8_t i2cTargetAddr = 0x20;

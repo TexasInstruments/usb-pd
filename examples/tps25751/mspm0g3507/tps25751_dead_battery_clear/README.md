@@ -77,7 +77,7 @@ Using these header files, this code example keeps a "shadow" copy of the device'
     addrReg = TPS25751_INT_EVENT_REG;
     i2cTransaction.writeBuf   = &addrReg;
     i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &curEventRegister;
+    i2cTransaction.readBuf    = &curEventRegister.bytes;
     i2cTransaction.readCount  = sizeof(tIntEventRegister);
 
     if (I2C_transfer(i2c, &i2cTransaction) == false)
@@ -99,7 +99,7 @@ Next, the code example will ensure that the ***Plug Insert or Removal*** bit is 
 
         /* If there is a plug event, clear the plug event flag */
         curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
-        memcpy(&curWriteCommand.registerData, &curEventRegister, sizeof(tIntEventRegister));
+        memcpy(&curWriteCommand.registerData, &curEventRegister.bytes, sizeof(tIntEventRegister));
         i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
         i2cTransaction.readCount = 0;
 

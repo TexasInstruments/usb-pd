@@ -98,10 +98,12 @@ int main(void)
 
     return (0);
 }
+
 static void prvSetupHardware(void)
 {
     SYSCFG_DL_init();
 }
+
 /*-----------------------------------------------------------*/
 
 void vApplicationMallocFailedHook(void)

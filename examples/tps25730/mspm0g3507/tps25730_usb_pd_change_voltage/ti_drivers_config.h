@@ -76,28 +76,8 @@ extern "C" {
 /*
  *  ======== GPIO ========
  */
-
-extern const uint_least8_t CONFIG_GPIO_LED_0_CONST;
-#define CONFIG_GPIO_LED_0 0
-#define CONFIG_GPIO_LED_0_IOMUX (IOMUX_PINCM1)
-
-/* Enable to the below code to configure power control of TMP117 */
-#ifdef CONFIG_GPIO_TMP_EN
-extern const uint_least8_t CONFIG_GPIO_TMP_EN_CONST;
-#define CONFIG_GPIO_TMP_EN 27
-#define CONFIG_GPIO_TMP_EN_IOMUX (IOMUX_PINCM60)
-#endif
-
-/* The range of pins available on this device */
-extern const uint_least8_t GPIO_pinLowerBound;
-extern const uint_least8_t GPIO_pinUpperBound;
-
-/* LEDs are active low */
-#define CONFIG_GPIO_LED_ON (0)
-#define CONFIG_GPIO_LED_OFF (1)
-
-#define CONFIG_LED_ON (CONFIG_GPIO_LED_ON)
-#define CONFIG_LED_OFF (CONFIG_GPIO_LED_OFF)
+#define CONFIG_GPIO_PD_IRQ            (56)
+#define CONFIG_GPIO_PD_IRQ_IOMUX      (IOMUX_PINCM52) /* PB24 */
 
 /*
  *  ======== I2C ========
@@ -124,27 +104,6 @@ extern const uint_least8_t CONFIG_I2C_TMP_CONST;
 /* TMP006 address and max speed */
 #define CONFIG_I2C_TMP_TMP006_ADDR (0x41)
 #define CONFIG_I2C_TMP_TMP006_MAXSPEED (3400U) /* kbps */
-
-/* BP-BASSENSORSMKII/TMP117 address and max speed */
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_TMP117_ADDR (0x48)
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_TMP117_MAXSPEED (400U) /* kbps */
-
-/* BP-BASSENSORSMKII/OPT3001 address and max speed */
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_OPT3001_ADDR (0x44)
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_OPT3001_MAXSPEED (2600U) /* kbps */
-
-/* BP-BASSENSORSMKII/HDC2080 address and max speed */
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_HDC2080_ADDR (0x40)
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_HDC2080_MAXSPEED (400U) /* kbps */
-
-/* BP-BASSENSORSMKII/BMI160_BMM150 address and max speed */
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_BMI160_BMM150_ADDR (0x69)
-#define CONFIG_I2C_TMP_BP_BASSENSORSMKII_BMI160_BMM150_MAXSPEED \
-    (1000U) /* kbps */
-
-/* CONFIG_I2C_TMP max speed (supported by all components) */
-#define CONFIG_I2C_TMP_MAXSPEED (400U) /* kbps */
-#define CONFIG_I2C_TMP_MAXBITRATE ((I2C_BitRate) I2C_400kHz)
 
 /* Defines for I2C */
 #define I2C_INST I2C1
