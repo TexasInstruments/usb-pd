@@ -37,7 +37,7 @@ This code example takes the register structures of the TPS25751's host interface
 
 ![TPS25730EVM](./doc/bootflags.png "Boot Flags")
 
-... is mapped pragmatically to a header file as seen below from **[tps25751.h](./tps25751.h)**:
+... is mapped pragmatically to a header file as seen below from **[tps25751.h](https://github.com/TexasInstruments/usb-pd/blob/main/common/tps25751.h)**:
 
 ```c
 /* Boot Flags Register */

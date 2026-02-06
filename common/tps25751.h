@@ -29,8 +29,8 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __TPS25752__H__
-#define __TPS25752__H__
+#ifndef __TPS25751__H__
+#define __TPS25751__H__
 
 #include <stdint.h>
 
@@ -295,6 +295,7 @@ typedef union
     } bits;
 } tPBMsResponse;
 
+#define TPS25751_4CC_GSrc_CMD {0x47, 0x53, 0x72, 0x43}
 #define TPS25751_4CC_DBfg_CMD {0x44, 0x42, 0x66, 0x67}
 #define TPS25751_4CC_PBMs_CMD {0x50, 0x42, 0x4D, 0x73}
 #define TPS25751_4CC_PBMc_CMD {0x50, 0x42, 0x4D, 0x63}

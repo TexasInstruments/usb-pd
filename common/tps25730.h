@@ -97,4 +97,6 @@ typedef struct __attribute__((packed)) s4CCCommand
     uint8_t              fourCCBytes[4];
 } t4CCCommand;
 
+#define TPS25730_4CC_GSrc_CMD {0x47, 0x53, 0x72, 0x43}
+
 #endif

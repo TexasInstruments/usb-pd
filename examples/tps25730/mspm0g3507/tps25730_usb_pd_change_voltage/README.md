@@ -35,7 +35,7 @@ This code example takes the register structures of the TPS25730's host interface
 
 ![](./doc/sinktable.png)
 
-... is mapped pragmatically to a header file as seen below from **[usb_pdo.h](./usb_pdo.h)**:
+... is mapped pragmatically to a header file as seen below from **[tps25730.h](https://github.com/TexasInstruments/usb-pd/blob/main/common/tps25730.h)**:
 
 ```c
 /* Sink Capabilities Register */

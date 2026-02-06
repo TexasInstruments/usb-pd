@@ -58,7 +58,7 @@ const t4CCCommand gSrcCommand =
 {
     .commandRegister = TPS25730_4CC_REG,
     .numOfBytes = 4,
-    .fourCCBytes = {0x47, 0x53, 0x72, 0x43}
+    .fourCCBytes = TPS25730_4CC_GSrc_CMD
 };
 
 /*
