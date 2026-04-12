@@ -67,7 +67,7 @@ static tIntEventRegister clearAllEventReg;
 /* This command is used as inputs to the PBMs 4CC command */
 static tPBMDataReg curPBMDataReg = 
 {
-    .bits.numOfBytes = TPS25751_PBM_DATA_PAYLOAD_SIZE,
+    .bits.numOfBytes = TPS25751_PBM_DATA_PAYLOAD_SIZE-1,
     .bits.i2cTargetAddr = TPS25751_BURST_REG,
     .bits.timeoutValue = TPS25751_PBMS_TIMEOUT
 };

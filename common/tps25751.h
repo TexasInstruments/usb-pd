@@ -29,8 +29,8 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __TPS25751__H__
-#define __TPS25751__H__
+#ifndef __TPS25752__H__
+#define __TPS25752__H__
 
 #include <stdint.h>
 
@@ -78,7 +78,7 @@ typedef struct __attribute__((packed)) sSinkSourceCapabilities
     uint8_t              reserved1[24];
 } tSinkSourceCapabilities;
 
-/* Sink Capabilities - Write Packet Template */
+/* Write Packet Template */
 typedef struct __attribute__((packed)) sTPS25751WriteCommand
 {
     uint8_t writeAddr;
@@ -172,7 +172,7 @@ typedef union
         uint8_t  bist               : 1;
         uint8_t  reserved2          : 2;
         uint8_t  socAckTimeout      : 1;
-        uint16_t  reserved3          : 9;
+        uint16_t  reserved3         : 9;
     } bits;
 } tStatusRegister;
 
@@ -227,9 +227,10 @@ typedef union
 } tPortConfiguration;
 
 /* Patch Burst Mode Data */
+#define TPS25751_PBM_DATA_PAYLOAD_SIZE 7
 typedef union 
 {
-    uint8_t bytes[7];
+    uint8_t bytes[TPS25751_PBM_DATA_PAYLOAD_SIZE];
     struct __attribute__((packed))
     {
         uint8_t   numOfBytes             : 8;
@@ -256,25 +257,9 @@ typedef struct __attribute__((packed)) sCustomerUseRegister
     uint32_t             custRegWord2;
 } tCustomerUseRegister;
 
-#define TPS25751_PBM_DATA_PAYLOAD_SIZE 6
-
 /* Mode Definitions */
 #define TPS25751_MODE_APP 0x20505041
 #define TPS25751_MODE_PTCH 0x48435450
-
-/* Register Addresses */
-#define TPS25751_MODE_REG            0x03
-#define TPS25751_CUST_USE_REG        0x06
-#define TPS25751_4CC_REG             0x08
-#define TPS25751_CMD1_DATA_REG       0x09
-#define TPS25751_INT_EVENT_REG       0x14
-#define TPS25751_INT_EVENT_MASK_REG  0x16
-#define TPS25751_INT_EVENT_CLR_REG   0x18
-#define TPS25751_STATUS_EVENT_REG    0x1A
-#define TPS25751_PORT_CONFIG_REG     0x26
-#define TPS25751_SOURCE_CAP_REG      0x30
-#define TPS25751_SINK_CAP_REG        0x33
-#define TPS25751_BOOT_FLAGS_REG      0x2D
 
 /* 4CC Command Template */
 typedef struct __attribute__((packed)) s4CCCommand
@@ -295,9 +280,69 @@ typedef union
     } bits;
 } tPBMsResponse;
 
+/* I2Cr Parameters and Response */
+#define TPS25751_I2CR_DATA_PAYLOAD_SIZE 15
+typedef union
+{
+    uint8_t bytes[TPS25751_I2CR_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes          : 8;
+        uint8_t targetAddr          : 7;
+        uint8_t reserved0           : 1;
+        uint8_t registerOffset      : 8;
+        uint8_t numOfBytesPayload   : 8;
+    } bits;
+} tI2CrDataReg;
+
+#define TPS25751_I2CR_RESP_SIZE 12
+#define TPS25751_I2C_PAYLOAD_SIZE 10
+typedef union
+{
+    uint8_t bytes[TPS25751_I2CR_RESP_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes     : 8;
+        uint8_t status          : 8;
+        uint8_t payLoadResp[TPS25751_I2C_PAYLOAD_SIZE];
+    } bits;
+} tI2CrRespReg;
+
+/* I2Cw Parameters */
+#define TPS25751_I2CW_DATA_PAYLOAD_SIZE 14
+typedef union
+{
+    uint8_t bytes[TPS25751_I2CW_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint8_t targetAddr             : 7;
+        uint8_t reserved0              : 1;
+        uint8_t numOfBytesPayload      : 8;
+        uint8_t registerOffset         : 8;
+        uint8_t payloadBuffer[TPS25751_I2C_PAYLOAD_SIZE];
+    } bits;
+} tI2CwDataReg;
+
+/* Register Addresses */
+#define TPS25751_MODE_REG            0x03
+#define TPS25751_CUST_USE_REG        0x06
+#define TPS25751_4CC_REG             0x08
+#define TPS25751_CMD1_DATA_REG       0x09
+#define TPS25751_INT_EVENT_REG       0x14
+#define TPS25751_INT_EVENT_MASK_REG  0x16
+#define TPS25751_INT_EVENT_CLR_REG   0x18
+#define TPS25751_STATUS_EVENT_REG    0x1A
+#define TPS25751_PORT_CONFIG_REG     0x26
+#define TPS25751_SOURCE_CAP_REG      0x30
+#define TPS25751_SINK_CAP_REG        0x33
+#define TPS25751_BOOT_FLAGS_REG      0x2D
+
 #define TPS25751_4CC_GSrc_CMD {0x47, 0x53, 0x72, 0x43}
 #define TPS25751_4CC_DBfg_CMD {0x44, 0x42, 0x66, 0x67}
 #define TPS25751_4CC_PBMs_CMD {0x50, 0x42, 0x4D, 0x73}
 #define TPS25751_4CC_PBMc_CMD {0x50, 0x42, 0x4D, 0x63}
+#define TPS25751_4CC_I2Cr_CMD {0x49, 0x32, 0x43, 0x72}
+#define TPS25751_4CC_I2Cw_CMD {0x49, 0x32, 0x43, 0x77}
 
 #endif
