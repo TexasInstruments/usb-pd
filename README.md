@@ -49,7 +49,7 @@ General explanations of how to build each example are listed below.
 
 ### [Texas Instruments MSPM0 Microcontrollers](https://www.ti.com/product-category/microcontrollers-processors/arm-based-mcus/arm-cortex-m0/overview.html)
 
-For the TI MSPM0 family of microcontrollers, the code examples are provided with the [Code Composer Studio Theia](https://www.ti.com/tool/download/CCSTUDIO-THEIA) IDE. For these code examples it is required to have the relevant [MSPM0 SDK](https://www.ti.com/tool/MSPM0-SDK) installed and acessible to Code Composer. As most of these code examples will leverage FreeRTOS (not included in this repository), the project files will rely on the install of the MSPM0 SDK for driver dependancies, RTOS libraries, and build infrastructure. To import a project into the IDE, simply go to ***File->Import Project(s)*** and follow the prompts for importing the projects into you environment. 
+For the TI MSPM0 family of microcontrollers, the code examples are provided with the [Code Composer Studio](https://www.ti.com/tool/download/CCSTUDIO) IDE. For these code examples it is required to have the relevant [MSPM0 SDK](https://www.ti.com/tool/MSPM0-SDK) installed and acessible to Code Composer. As most of these code examples will leverage FreeRTOS (not included in this repository), the project files will rely on the install of the MSPM0 SDK for driver dependancies, RTOS libraries, and build infrastructure. To import a project into the IDE, simply go to ***File->Import Project(s)*** and follow the prompts for importing the projects into you environment. 
 
 ## Header Files
 
