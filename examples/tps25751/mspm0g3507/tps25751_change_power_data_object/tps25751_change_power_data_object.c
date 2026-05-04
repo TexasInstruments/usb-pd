@@ -118,9 +118,7 @@ void *mainThread(void *arg0)
     }
 
     /* Setting the peripheral address */
-    i2cTransaction.targetAddress = i2cTargetAddr;
-
-    
+    i2cTransaction.targetAddress = i2cTargetAddr;    
 
 SYSTEM_POWER_ON:
     /* Waiting for USB-PD Source to be plugged in...  */
@@ -153,8 +151,6 @@ WAIT_FOR_USBPD_CONTRACT:
             vTaskDelay(50 / portTICK_PERIOD_MS);
         } while (GPIO_read(CONFIG_GPIO_PD_IRQ));
     }
-    
-    
 
     /* Setting up the read transaction to the event register */
     addrReg = TPS25751_INT_EVENT_REG;
@@ -349,7 +345,6 @@ POST_INITIAL_USBPD_CONTRACT:
         vTaskDelay(500 / portTICK_PERIOD_MS);
         goto WAIT_FOR_USBPD_CONTRACT;
     }
-
 
 TPS25751ErrorClosure:
     I2C_close(i2c);

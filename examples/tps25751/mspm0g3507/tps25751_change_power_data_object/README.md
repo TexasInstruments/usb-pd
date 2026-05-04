@@ -7,7 +7,7 @@
 
 ## Summary
 
-This code example shows how to utilize the Autonegotiate Sink and the 4CC command 'ANeg' to change power provided to the system when using the [TPS25751](https://www.ti.com/product/TPS25751). This is an interrupt-driven design and will utilize the I2Ct_IRQ to determine when power conumption has changed. The TPS25751 starts by consuming the maximum a power supply can provide (20V at 3A), The Requested Data Object (RDO) and Received Source Capabilites are read-back, Autonegotiate sink register is modified to have the TPS25751 negotiate a lower (5V) RDO, then the 4CC 'ANeg' command is sent. The interurpts are driven by the TPS25751 and sent to the MCU (in this case an [MSPM0G3507](https://www.ti.com/product/MSPM0G3507)) which will trigger different events depending on the interrupt events asserted.
+This code example shows how to utilize the Autonegotiate Sink and the 4CC command 'ANeg' to change power provided to the system when using the [TPS25751](https://www.ti.com/product/TPS25751). This is an interrupt-driven design and will utilize the I2Ct_IRQ to determine when power consumption has changed. The TPS25751 starts by consuming the maximum a power supply can provide (20V at 3A), The Requested Data Object (RDO) and Received Source Capabilites are read-back, Autonegotiate sink register is modified to have the TPS25751 negotiate a lower (5V) RDO, then the 4CC 'ANeg' command is sent. The interurpts are driven by the TPS25751 and sent to the MCU (in this case an [MSPM0G3507](https://www.ti.com/product/MSPM0G3507)) which will trigger different events depending on the interrupt events asserted.
 
 ## Hardware Configuration
 
@@ -98,7 +98,7 @@ In order to proceed to the next step, either plug in the USB cable to port ***J3
     }
 ```
 
-PD will continually wait for an interrupt event. When an interrupt occurs on the I2C IRQ line (that pends a semaphore) and the device attempts to read the ***Interrupt Event for I2C1 (0x14)***:
+This is the main loop entry point for the example. When an interrupt occurs on the I2C IRQ line, the device attempts to read the ***Interrupt Event for I2C1 (0x14)*** and process the different potential events that are enabled:
 
 ```c
     WAIT_FOR_USBPD_CONTRACT:
@@ -131,7 +131,7 @@ PD will continually wait for an interrupt event. When an interrupt occurs on the
     }
 ```
 
-The device will handle specific interrupt events individually. The process is if the flag is set, service the flag as needed, then write that bit to the ***Interrupt Clear for I2C1 (0x18)*** to clear ONLY that specific flag from the events causing the interrupt line to be asserted. 
+The device will handle specific interrupt events individually. The process is if the flag (patchLoaded, plugInsertRemoval, or newContractCons) is set, handle the flag as needed, then write that flag bit location to the ***Interrupt Clear for I2C1 (0x18)*** to clear ONLY that specific flag from the events causing the interrupt line to be asserted. 
 
 The first interrupt flag that is handled if the ***Patch Loaded (bit 80)***:
 ```c
@@ -158,7 +158,7 @@ The first interrupt flag that is handled if the ***Patch Loaded (bit 80)***:
     }
 ```
 
-Next interrupt is the ***Plug Insert or Removal (bit 3)***:
+The next interrupt flag is the ***Plug Insert or Removal (bit 3)***:
 ```c
     /* Seeing if there was a plug event  */
     if(curEventRegister.bits.plugInsertRemoval == 1)
@@ -259,7 +259,7 @@ If there are any other pending interrupts, this example is not set to handle tho
     goto WAIT_FOR_USBPD_CONTRACT;
 ```
 
-Next, since a PD Charger providing more than 5V was connected clear any pending interrupts since any remaining interrupts are not needed for this example. Then begin creatying a shadow copy of the ***Autonegotiate Sink (0x37)*** register by reading it:
+Next, since a PD Charger providing more than 5V was connected clear any pending interrupts since any remaining interrupts are not needed for this example. Then begin creating a shadow copy of the ***Autonegotiate Sink (0x37)*** register by reading it:
 
 ```c
     POST_INITIAL_USBPD_CONTRACT:
@@ -293,7 +293,7 @@ Next, since a PD Charger providing more than 5V was connected clear any pending 
     }
 ```
 
-Modify the ***Auto Compute Sink Max Voltage (bit 5)*** to 0. This means the ***Auto Neg MAx Voltage (bits 32:41)*** will be set by the EC (this device). Then set the ***Auto Neg MAx Voltage (bits 32:41)*** to 5V or 100d (5,000mV / 50mV per LSB = 100):
+Modify the ***Auto Compute Sink Max Voltage (bit 5)*** to 0. This means the ***Auto Neg MAx Voltage (bits 32:41)*** will be set by the MCU (this device). Then set the ***Auto Neg Max Voltage (bits 32:41)*** to 5V or 100d (5,000mV / 50mV per LSB = 100):
 
 ```c
     Display_printf(display, 0, 0, "Changing ");
