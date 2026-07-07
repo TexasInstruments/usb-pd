@@ -64,6 +64,9 @@ static tIntEventRegister curEventRegister;
     and is initialized to all 0xFFs */
 static tIntEventRegister clearAllEventReg;
 
+/* Event register to read currently triggered flags */
+static tIntEventRegister curTriggeredIntsReg;
+
 /* This command is used as inputs to the PBMs 4CC command */
 static tPBMDataReg curPBMDataReg = 
 {
@@ -89,12 +92,15 @@ const t4CCCommand pbmc4CCCommand =
     .fourCCBytes = TPS25751_4CC_PBMc_CMD
 };
 
+static t4CCCommandResp cmdResp;
+
 /* Customer Use Registers */
 static tCustomerUseRegister custReg;
 
 /* Local variable for I2C driver communication */
 static tTPS25751WriteCommand curWriteCommand;
-static tPBMsResponse pbmResp;
+static tPBMsResponse pbmsResp;
+static tPBMcResponse pbmcResp;
 
 /*
  *  ======== mainThread ========
@@ -105,9 +111,8 @@ void *mainThread(void *arg0)
     I2C_Params i2cParams;
     I2C_Transaction i2cTransaction;
     uint8_t addrReg;
+    uint8_t sizeWritten;
     uint32_t ii;
-    uint32_t curBurstPosition;
-    uint32_t curBurstSize;
     tModeRegister modeReg;
 
     /* Call driver init functions and create RTOS objects */
@@ -152,14 +157,6 @@ void *mainThread(void *arg0)
     {
         Display_printf(display, 0, 0, "I2C Initialized!");
     }
-
-    /* Waiting for an interrupt and debouncing */
-    Display_printf(display, 0, 0, "Waiting for initial interrupt and debouncing...");
-    do
-    {
-        xSemaphoreTake(xSemaphore, portMAX_DELAY);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    } while (GPIO_read(CONFIG_GPIO_PD_IRQ));
 
     /* Setting the peripheral address */
     i2cTransaction.targetAddress = TPS25751_I2C_TARGET_ADDR;
@@ -238,10 +235,14 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    if(memcmp(&readPBMDataReg + 1, &curPBMDataReg + 1, sizeof(tPBMDataReg) - 1) != 0)
+    for(ii=1; ii < sizeof(tPBMDataReg); ii++)
     {
-        Display_printf(display, 0, 0, "PBM data register failed to write!");
-        goto TPS25751ErrorClosure;
+        if(readPBMDataReg.bytes[ii] != curPBMDataReg.bytes[ii])
+        {
+            Display_printf(display, 0, 0, "PBMs data register failed to write!");
+            goto TPS25751ErrorClosure;
+        }
+
     }
 
     /* Sending PMBs Command */
@@ -257,10 +258,23 @@ void *mainThread(void *arg0)
     }
 
     /* Waiting for CMD1 interrupt */
+WaitForPMBSCMD:
     xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
-    /* Clear CMD1 interrupt*/
-    Display_printf(display, 0, 0, "Clearing interrupts...");
+    /* Reading the currently triggered interrupts and clearing them */
+    addrReg = TPS25751_INT_EVENT_REG;
+    i2cTransaction.writeBuf = &addrReg;
+    i2cTransaction.writeCount = 1;
+    i2cTransaction.readCount = sizeof(tIntEventRegister);
+    i2cTransaction.readBuf = &curTriggeredIntsReg;
+
+   if (I2C_transfer(i2c, &i2cTransaction) == false)
+   {
+       Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+       goto TPS25751ErrorClosure;
+   }
+
+    /* Clear lingering interrupt*/
     memcpy(&curWriteCommand.registerData, &clearAllEventReg.bytes, sizeof(tIntEventRegister));
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
     i2cTransaction.writeBuf = &curWriteCommand;
@@ -273,11 +287,40 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    /* Reading output data to verify command success */
+    if(curTriggeredIntsReg.bits.cmd1Complete != 0x01)
+    {
+         Display_printf(display, 0, 0, "Interrupt happened, but it wasn't CMD1.");
+         goto WaitForPMBSCMD;
+    }
+
+    Display_printf(display, 0, 0, "CMD1 interrupt occured!");
+
+    /* Reading the CMD1 register to make sure the command went through */
+    addrReg = TPS25751_4CC_REG;
+    i2cTransaction.writeBuf   = &addrReg;
+    i2cTransaction.writeCount = 1;
+    i2cTransaction.readBuf    = &cmdResp;
+    i2cTransaction.readCount  = sizeof(t4CCCommandResp);
+
+    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    {
+        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        goto TPS25751ErrorClosure;
+    }
+
+    if(cmdResp.bits.commandStatus != 0)
+    {
+        Display_printf(display, 0, 0, "PBMs command rejected!");
+        goto TPS25751ErrorClosure;
+    }
+
+    Display_printf(display, 0, 0, "PBMs command accepted!");
+
+   /* Reading output data to verify command success */
     addrReg = TPS25751_CMD1_DATA_REG;
     i2cTransaction.writeBuf   = &addrReg;
     i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &pbmResp;
+    i2cTransaction.readBuf    = &pbmsResp;
     i2cTransaction.readCount  = sizeof(tPBMsResponse);
 
     if (I2C_transfer(i2c, &i2cTransaction) == false)
@@ -286,16 +329,17 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    if(pbmResp.bits.status != 0x00)
+    if(pbmsResp.bits.status != 0x00)
     {
-        Display_printf(display, 0, 0, "Invalid PBMs response 0x%x", pbmResp.bits.status);
+        Display_printf(display, 0, 0, "Invalid PBMs response 0x%x", pbmsResp.bits.status);
         goto TPS25751ErrorClosure;
     }
 
-    /* Sending the image over I2C */
-    Display_printf(display, 0, 0, "Sending patch data...");
+    Display_printf(display, 0, 0, "CMD1 DATA read and task successful.");
+    Display_printf(display, 0, 0, "Sending data...");
+
     i2cTransaction.targetAddress = TPS25751_BURST_REG;
-    i2cTransaction.writeBuf = (void*)(tps25751x_lowRegion_i2c_array);
+    i2cTransaction.writeBuf = (uint8_t*)&tps25751x_lowRegion_i2c_array;
     i2cTransaction.writeCount = gSizeLowRegionArray;
     i2cTransaction.readCount = 0;
 
@@ -305,11 +349,27 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    /* Delaying for 50ms */
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+     Display_printf(display, 0, 0, "Data transfer done!");
+     Display_printf(display, 0, 0, "Size written: %d", gSizeLowRegionArray);
 
-    /* Send PBMc command to device */
+
+    /* Setting interrupt mask to enable CMD1 complete and PATCH loaded */
+    Display_printf(display, 0, 0, "Enabling CMD1 interrupts...");
     i2cTransaction.targetAddress = TPS25751_I2C_TARGET_ADDR;
+    curWriteCommand.writeAddr = TPS25751_INT_EVENT_MASK_REG;
+    memcpy(&curWriteCommand.registerData, &curEventRegister.bytes, sizeof(tIntEventRegister));
+    i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
+    i2cTransaction.writeBuf = &curWriteCommand;
+    i2cTransaction.readCount = 0;
+
+    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    {
+        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        goto TPS25751ErrorClosure;
+    }
+    
+    /* Send PBMc command to device */
+     Display_printf(display, 0, 0, "Sending PBMc command...");
     i2cTransaction.writeBuf = (void*)&pbmc4CCCommand;
     i2cTransaction.writeCount = sizeof(t4CCCommand);
     i2cTransaction.readCount  = 0;
@@ -320,13 +380,25 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    /* Waiting for the interrupt and reading the CMD1 register*/
+   /* Waiting for CMD1 interrupt */
+WaitForPMBCCMD:
     xSemaphoreTake(xSemaphore, portMAX_DELAY);
 
-    /* Clear CMD1 interrupt*/
-    Display_printf(display, 0, 0, "Clearing CMD1...");
+    /* Reading the currently triggered interrupts and clearing them */
+    addrReg = TPS25751_INT_EVENT_REG;
+    i2cTransaction.writeBuf = &addrReg;
+    i2cTransaction.writeCount = 1;
+    i2cTransaction.readCount = sizeof(tIntEventRegister);
+    i2cTransaction.readBuf = &curTriggeredIntsReg;
 
-    memcpy(&curWriteCommand.registerData, &clearAllEventReg.bytes, sizeof(tIntEventRegister));
+   if (I2C_transfer(i2c, &i2cTransaction) == false)
+   {
+       Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+       goto TPS25751ErrorClosure;
+   }
+
+    /* Clear lingering interrupt*/
+    memcpy(&curWriteCommand.registerData, &curTriggeredIntsReg.bytes, sizeof(tIntEventRegister));
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
     i2cTransaction.writeBuf = &curWriteCommand;
     i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
@@ -338,12 +410,21 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    /* Reading the result register from data */
-    addrReg = TPS25751_CMD1_DATA_REG;
+    if(curTriggeredIntsReg.bits.cmd1Complete != 0x01)
+    {
+         Display_printf(display, 0, 0, "Interrupt happened, but it wasn't CMD1.");
+         goto WaitForPMBCCMD;
+    }
+
+    Display_printf(display, 0, 0, "CMD1 interrupt occured!");
+
+    /* Reading the CMD1 register to make sure the command wasn't rejected */
+    vTaskDelay(5 / portTICK_PERIOD_MS);
+    addrReg = TPS25751_4CC_REG;
     i2cTransaction.writeBuf   = &addrReg;
     i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &pbmResp;
-    i2cTransaction.readCount  = sizeof(tPBMsResponse);
+    i2cTransaction.readBuf    = &cmdResp;
+    i2cTransaction.readCount  = sizeof(t4CCCommandResp);
 
     if (I2C_transfer(i2c, &i2cTransaction) == false)
     {
@@ -351,11 +432,34 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    if(pbmResp.bits.status != 0x00)
+    if(cmdResp.bits.commandStatus != 0)
     {
-        Display_printf(display, 0, 0, "PBMc command failed to send!");
+        Display_printf(display, 0, 0, "PBMc CMD1 not clear!");
         goto TPS25751ErrorClosure;
     }
+
+    Display_printf(display, 0, 0, "PBMc CMD1 accepted!");
+
+    /* Reading the result register from data */
+    addrReg = TPS25751_CMD1_DATA_REG;
+    i2cTransaction.writeBuf   = &addrReg;
+    i2cTransaction.writeCount = 1;
+    i2cTransaction.readBuf    = &pbmcResp;
+    i2cTransaction.readCount  = sizeof(tPBMcResponse);
+
+    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    {
+        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        goto TPS25751ErrorClosure;
+    }
+
+    if(pbmcResp.bits.status.standardTaskResult != 0)
+    {
+        Display_printf(display, 0, 0, "PBMc command failed to send: 0x%x", pbmcResp.bits.status.standardTaskResult);
+        goto TPS25751ErrorClosure;
+    }
+
+    vTaskDelay(20 / portTICK_PERIOD_MS);
 
     /* Reading the MODE register to verify we are now in APP  mode */
     Display_printf(display, 0, 0, "Waiting for device to be in APP mode...");
@@ -395,7 +499,7 @@ void *mainThread(void *arg0)
 
     if((custReg.custRegWord2 != 0xCAFEBEEF) || (custReg.custRegWord1 != 0xDEADBEEF))
     {
-        Display_printf(display, 0, 0, "ERROR! ustomer user registers did not match!");
+        Display_printf(display, 0, 0, "ERROR! Customer user registers did not match!");
         goto TPS25751ErrorClosure;
     }
     else

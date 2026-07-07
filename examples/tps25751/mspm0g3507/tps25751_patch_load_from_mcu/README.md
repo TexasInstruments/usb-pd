@@ -71,21 +71,17 @@ typedef union
         uint8_t  bist               : 1;
         uint8_t  reserved2          : 2;
         uint8_t  socAckTimeout      : 1;
-        uint16_t  reserved3          : 9;
+        uint16_t  reserved3         : 9;
     } bits;
 } tStatusRegister;
 ```
 
-Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events registers. In this code example, we setup the MSPM0 to listen for a falling edge interrupt on the I2C IRQ line. This is done initially to detect the first boot-up of the device (and to add a debounce to filter out any glitches):
+Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events registers. In this code example, we setup the MSPM0 to listen for a falling edge interrupt on the I2C IRQ line. This is done periodically throughout the code to prevent polling the I2C line and waiting for certain events to take place:
 
 ```c
-    /* Waiting for an interrupt and debouncing */
-    Display_printf(display, 0, 0, "Waiting for initial interrupt and debouncing...");
-    do
-    {
-        xSemaphoreTake(xSemaphore, portMAX_DELAY);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    } while (GPIO_read(CONFIG_GPIO_PD_IRQ));
+/* Waiting for CMD1 interrupt */
+WaitForPMBSCMD:
+    xSemaphoreTake(xSemaphore, portMAX_DELAY);
 ```
 
 The interrupt handler for the interrupt GPIO can be seen below:
@@ -118,6 +114,7 @@ After booting up, the device periodically reads the MODE register and waits for 
 ```
 
 Throughout the code example, the **ready for patch** and **CMD1 complete** interrupts are used for synchronization. As such, the interrupt masks are enabled so that the IRQ line toggles accordingly:
+
 ```c
     /* Setting interrupt mask to enable CMD1 complete and PATCH loaded */
     Display_printf(display, 0, 0, "Enabling CMD1 interrupts...");
@@ -135,6 +132,7 @@ Throughout the code example, the **ready for patch** and **CMD1 complete** inter
 ```
 
 The first part of the patch load process is to issue the PBMs 4CC command. Before doing this, however, the relevant data needs to be set to the CMD Data register. This data has been prepoulated in the defined structure at the top of the file:
+
 ```c
 static tPBMDataReg curPBMDataReg = 
 {
@@ -145,6 +143,7 @@ static tPBMDataReg curPBMDataReg =
 ```
 
 Note that the image size is populated during runtime when the PBMs data is persisted to avoid link-time restrictions:
+
 ```c
     /* Send PBMs Data */
     Display_printf(display, 0, 0, "Setting PBMs data...");
@@ -163,6 +162,7 @@ Note that the image size is populated during runtime when the PBMs data is persi
 ```
 
 After the PBMs data has been persisted to the device, we are ready to issue the PBMs 4CC command and start to pipe in the patch data. Below, the PBMs command is issued and we wait for an interrupt to signal that we can start to pipe data to the device:
+
 ```c
     /* Sending PMBs Command */
     Display_printf(display, 0, 0, "Sending PBMs command...");
@@ -181,6 +181,7 @@ After the PBMs data has been persisted to the device, we are ready to issue the 
 ```
 
 After verifying that the command went through successfully, we transfer the patch data in one big I2C transaction:
+
 ```c
     Display_printf(display, 0, 0, "Sending patch data...");
     i2cTransaction.targetAddress = TPS25751_BURST_REG;
@@ -196,6 +197,7 @@ After verifying that the command went through successfully, we transfer the patc
 ```
 
 After a short delay and verification that the command was executed, we pend on the IRQ semaphore to make sure that the firmware patch was loaded correctly. From there, we poll the MODE register to ensure that we have entered APP mode successfully:
+
 ```c
    /* Reading the MODE register to verify we are now in APP  mode */
     Display_printf(display, 0, 0, "Waiting for device to be in APP mode...");
@@ -219,6 +221,7 @@ After a short delay and verification that the command was executed, we pend on t
 ```
 
 The final step of the program is to read the customer user register to ensure that the values we set in the initial step through the configuration tool persisted correctly to the patch:
+
 ```c
     /* Reading customer use register 1 */
     Display_printf(display, 0, 0, "Reading customer user register...");

@@ -226,22 +226,6 @@ typedef union
     } bits;
 } tPortConfiguration;
 
-/* Patch Burst Mode Data */
-#define TPS25751_PBM_DATA_PAYLOAD_SIZE 7
-typedef union 
-{
-    uint8_t bytes[TPS25751_PBM_DATA_PAYLOAD_SIZE];
-    struct __attribute__((packed))
-    {
-        uint8_t   numOfBytes             : 8;
-        uint32_t  lowerRegionSize        : 32;
-        uint8_t   i2cTargetAddr          : 7;
-        uint8_t   reserved0              : 1;
-        uint8_t   timeoutValue           : 6;
-        uint8_t   reserved1              : 2;
-    } bits;
-} tPBMDataReg;
-
 /* Mode Register Structure */
 typedef struct __attribute__((packed)) sModeRegister
 {
@@ -261,6 +245,29 @@ typedef struct __attribute__((packed)) sCustomerUseRegister
 #define TPS25751_MODE_APP 0x20505041
 #define TPS25751_MODE_PTCH 0x48435450
 
+/* Liquid Detection Configuration Register */
+typedef union 
+{
+    uint8_t bytes[13];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes                     : 8;
+        uint16_t  waitTimeInSecNoLiquid         : 16;
+        uint16_t  waitTimeInSecLiquid           : 16;
+        uint8_t  numOfSamples                   : 8;
+        uint8_t  lowThreshNoLiquid              : 8;
+        uint8_t  highThreshNoLiquid             : 8;
+        uint8_t  lowThreshLiquid                : 8;
+        uint8_t  highThreshLiquid               : 8;
+        uint8_t  sampleTimeIn10msNoLiquid       : 4;
+        uint8_t  sampleTimeIn10msLiquid         : 4;
+        uint8_t  liquidDetectionState           : 1;
+        uint8_t  enableCorrosionMitigation      : 1;
+        uint8_t  enableLiquidDetection          : 1;
+        uint8_t  reserved0                      : 5;
+    } bits;
+} tLiquidDetectionConfiguration;
+
 /* 4CC Command Template */
 typedef struct __attribute__((packed)) s4CCCommand
 {
@@ -269,6 +276,32 @@ typedef struct __attribute__((packed)) s4CCCommand
     uint8_t              fourCCBytes[4];
 } t4CCCommand;
 
+typedef union 
+{
+    uint8_t bytes[4];
+    struct __attribute__((packed)) 
+    {
+        uint8_t              numOfBytes;
+        uint32_t             commandStatus;
+    } bits;
+} t4CCCommandResp;
+
+/* Patch Burst Mode Data */
+#define TPS25751_PBM_DATA_PAYLOAD_SIZE 7
+typedef union 
+{
+    uint8_t bytes[TPS25751_PBM_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t   numOfBytes             : 8;
+        uint32_t  lowerRegionSize        : 32;
+        uint8_t   i2cTargetAddr          : 7;
+        uint8_t   reserved0              : 1;
+        uint8_t   timeoutValue           : 6;
+        uint8_t   reserved1              : 2;
+    } bits;
+} tPBMDataReg;
+
 /* PBMs Response*/
 typedef union 
 {
@@ -276,9 +309,47 @@ typedef union
     struct __attribute__((packed)) 
     {
         uint8_t              numOfBytes;
-        uint8_t              status;
+        uint32_t              status;
     } bits;
 } tPBMsResponse;
+
+/* PBMc Response*/
+typedef union 
+{
+    uint8_t bytes[64];
+    struct __attribute__((packed)) 
+    {
+        uint8_t              numOfBytes;
+        union
+        {
+            uint8_t standardTaskResult;
+            struct __attribute((packed))
+            {
+                uint8_t         acReturnIndicator : 4;
+                uint8_t         rpReturnIndicator : 4;
+            } returnIndicator;
+        } status;
+        uint8_t cpReturn                            : 8;
+        uint8_t devicePatchCompleteStatus           : 8;
+        uint8_t appConfigPatchCompleteStatus        : 8;
+        uint8_t patchBundleGood                     : 8;
+        uint8_t rpState                             : 8;
+        uint16_t rpBundleSignature                  : 16;
+        uint32_t rpPatchHeaderCRC                   : 32;
+        uint32_t rpPatchBodyCRC                     : 32;
+        uint16_t rpBundleFlags                      : 16;
+        uint16_t rpBundleTotalSize                  : 16;
+        uint32_t rpRomVersionExpected               : 32;
+        uint8_t configBundleGood                    : 8;
+        uint8_t acState                             : 8;
+        uint8_t acFailCode                          : 8;
+        uint8_t acHeaderVersion                     : 8;
+        uint16_t acIndicatedDataSize                : 16;
+        uint8_t reserved0                           : 8;
+        uint32_t acTransferredCRC                   : 32;
+        uint32_t acCalculatedCRC                    : 32;
+    } bits;
+} tPBMcResponse;
 
 /* I2Cr Parameters and Response */
 #define TPS25751_I2CR_DATA_PAYLOAD_SIZE 15
@@ -325,18 +396,19 @@ typedef union
 } tI2CwDataReg;
 
 /* Register Addresses */
-#define TPS25751_MODE_REG            0x03
-#define TPS25751_CUST_USE_REG        0x06
-#define TPS25751_4CC_REG             0x08
-#define TPS25751_CMD1_DATA_REG       0x09
-#define TPS25751_INT_EVENT_REG       0x14
-#define TPS25751_INT_EVENT_MASK_REG  0x16
-#define TPS25751_INT_EVENT_CLR_REG   0x18
-#define TPS25751_STATUS_EVENT_REG    0x1A
-#define TPS25751_PORT_CONFIG_REG     0x26
-#define TPS25751_SOURCE_CAP_REG      0x30
-#define TPS25751_SINK_CAP_REG        0x33
-#define TPS25751_BOOT_FLAGS_REG      0x2D
+#define TPS25751_MODE_REG                    0x03
+#define TPS25751_CUST_USE_REG                0x06
+#define TPS25751_4CC_REG                     0x08
+#define TPS25751_CMD1_DATA_REG               0x09
+#define TPS25751_INT_EVENT_REG               0x14
+#define TPS25751_INT_EVENT_MASK_REG          0x16
+#define TPS25751_INT_EVENT_CLR_REG           0x18
+#define TPS25751_STATUS_EVENT_REG            0x1A
+#define TPS25751_PORT_CONFIG_REG             0x26
+#define TPS25751_SOURCE_CAP_REG              0x30
+#define TPS25751_SINK_CAP_REG                0x33
+#define TPS25751_BOOT_FLAGS_REG              0x2D
+#define TPS25751_LIQUID_DETECT_CONFIG_REG    0x98
 
 #define TPS25751_4CC_GSrc_CMD {0x47, 0x53, 0x72, 0x43}
 #define TPS25751_4CC_DBfg_CMD {0x44, 0x42, 0x66, 0x67}

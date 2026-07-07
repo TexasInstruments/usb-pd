@@ -7,11 +7,11 @@
 
 ## Summary
 
-USB-PD controllers such as the TPS25751 and TPS26750 have two separate I2C lines: an I2C line used to provide the host interface to an MCU for control (I2Ct), and the I2C line used for event driven communication for battery charger communication (I2Cc). Many times there exists a use case where the MCU must read or write directly to the battery charger instead of relying solely on the event table running in the USB-PD firmware to do so. In this case, two separate 4CC commands (I2Cw and I2Cr) exist to allow the USB-PD to "pass through" I2C transactions between I2Cc and I2Ct. This code example shows a simple example on how to read and write traffic on I2Cc from an MCU connected to I2Ct.
+USB-PD controllers such as the TPS25751 and TPS26750 have two separate I2C lines: an I2C line used to provide the host interface to an MCU for control (I2Ct), and the I2C line used for event driven communication for battery charger interfacing (I2Cc). Many times there exists a use case where the MCU must read or write directly to the battery charger instead of relying solely on the event table running in the USB-PD firmware to do so. In this case, two separate 4CC commands (I2Cw and I2Cr) exist to allow the USB-PD to "pass through" I2C transactions between I2Cc and I2Ct. This code example shows a simple example on how to read and write traffic on I2Cc from an MCU connected to I2Ct.
 
 ## Limitations of the Passthrough Commands
 
-It's important to note there are a few limitations with using the passthrough commands. Payload sizes for both the read and write transactions are limited to 10 bytes for both. Additionally, when using an the I2Cc line in conjunction with a battery charger, the duration between passthrough commands is limited to approximately 150ms due to contigency measures with the event driver on the USB-PD controller. 
+It's important to note there are a few limitations with using the passthrough commands. Payload sizes for both the read and write transactions are limited to 10 bytes for both. Additionally, when using an the I2Cc line in conjunction with a battery charger, the duration between passthrough commands is limited to approximately 150ms due to concurrency measures with the event driver on the USB-PD controller. 
 
 ## Hardware Configuration
 
