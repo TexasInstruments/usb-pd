@@ -176,6 +176,43 @@ typedef union
     } bits;
 } tStatusRegister;
 
+/* Power Path Status Register */
+typedef union 
+{
+    uint8_t bytes[6];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes             : 8;
+        uint8_t  pp1CableSwitch         : 2;
+        uint8_t  reserved0              : 4;
+        uint8_t  pp1Switch              : 3;
+        uint8_t  reserved1              : 3;
+        uint8_t  pp3Switch              : 3;
+        uint16_t reserved2              : 13;
+        uint8_t  pp1Overcurrent         : 1;
+        uint8_t  reserved3              : 5;
+        uint8_t  pp1CableOvercurrent    : 1;
+        uint8_t  reserved4              : 3;
+        uint8_t  powerSource            : 1;
+    } bits;
+} tPowerPathStatusRegister;
+
+/* Power Status Register */
+typedef union 
+{
+    uint8_t bytes[3];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes             : 8;
+        uint8_t  powerConnection        : 1;
+        uint8_t  sourceSink             : 1;
+        uint8_t  typeCCurrent           : 2;
+        uint8_t  chargerDetectStat      : 4;
+        uint8_t  chargerAdvStat         : 2;
+        uint16_t reserved0              : 6;
+    } bits;
+} tPowerStatusRegister;
+
 /* Boot Flags Register */
 typedef struct __attribute__((packed)) sBootFlagsRegister 
 {
@@ -404,9 +441,11 @@ typedef union
 #define TPS25751_INT_EVENT_MASK_REG          0x16
 #define TPS25751_INT_EVENT_CLR_REG           0x18
 #define TPS25751_STATUS_EVENT_REG            0x1A
-#define TPS25751_PORT_CONFIG_REG             0x26
+#define TPS25751_POWER_PATH_EVENT_REG        0x26
+#define TPS25751_PORT_CONFIG_REG             0x28
 #define TPS25751_SOURCE_CAP_REG              0x30
 #define TPS25751_SINK_CAP_REG                0x33
+#define TPS25751_POWER_STATUS_REG            0x3F
 #define TPS25751_BOOT_FLAGS_REG              0x2D
 #define TPS25751_LIQUID_DETECT_CONFIG_REG    0x98
 

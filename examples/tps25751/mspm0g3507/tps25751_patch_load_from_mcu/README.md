@@ -21,7 +21,7 @@ The [TPS25751EVM](https://www.ti.com/tool/TPS25751EVM) is used with the [LP-MSPM
 
 ![TPS25730EVM](../../../../doc/m0orange.jpg "MSPM0 Connections")
 
-In this configuration, the red wire is I2C data (SDA), the green wire is I2C clock (SCL), the orange wire is I2C interrupt, and the yellow wire is ground (GND).  Also note that PB24 is used for I2C interrupts so the jumper J9 must be removed on the MSPM0 LaunchPad.
+In this configuration, the green wire is I2C data (SDA), the red wire is I2C clock (SCL), the orange wire is I2C interrupt, and the yellow wire is ground (GND).  Also note that PB24 is used for I2C interrupts so the jumper J9 must be removed on the MSPM0 LaunchPad.
 
 Also note that in order to disable the EEPROM, the jumper **J10** on the TPS25751EVM must be removed. 
 
