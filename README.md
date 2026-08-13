@@ -21,11 +21,15 @@ The code examples in the repository are meant to serve as a reference for interf
 
 - **[TPS25751](https://www.ti.com/product/TPS25751)** - USB-C® Power Delivery 3.2 controller with moisture detection and programmable power-supply
 
+- **[TPS25751A](https://www.ti.com/product/TPS25751A)** - USB-C® Power Delivery 3.2 controller with moisture detection and programmable power-supply
+
 - [**TPS26750**](https://www.ti.com/product/TPS26750) - USB Type-C® and USB Power Delivery (PD) 3.2 controller with 240W extended power-range support
 
 The majority of the code examples will leverage communication using the host interface of the USB-PD controllers listed above (over I2C). To interact with the host interface, simple jumper wire can be used to connect the EVM of the corresponding MCU to the EVM of the USB-PD controller.  Each USB-PD controller will have the I2C signals of the host interface brought out to a specific header. An example of how to do this  on the TPS25730EVM can be seen below.
 
 Note that in the pictures below, the red wire represents the I2C SDA line and the green wire represents the I2C SCL line (with yellow being ground).
+
+Note that J9 on the LP-MSPM0G3507 LaunchPad must be removed in order to avoid pin conflicts. 
 
 ##### **[TPS25730EVM](https://www.ti.com/tool/TPS25730EVM)**
 
@@ -38,6 +42,20 @@ An example using the TPS25751EVM can be seen below:
 ![TPS25730EVM](./doc/751.jpg "TPS25751EVM Connections")
 
 Note in this case the extra orange cable is for I2C interrupt.
+
+##### **[TPS25751AEVM](https://www.ti.com/tool/TPS25751AEVM)**
+
+![TPS25751AEVM](./doc/751a.jpg "TPS25751EVM Connections")
+
+In this configuration, the following connections are made:
+
+- GND of the TPS25751A is connected to any available GND pin of the LP-MSPM0G3507
+
+- I2Ct_SCL of the TPS25751A is connected to PB2 of the LP-MSPM0G3507
+
+- I2Ct_SDA of the TPS25751A is connected to PB3 of the LP-MSPM0G3507
+
+- I2Ct_IRQ of the TPS25751A is connected to PB24 of the LP-MSPM0G3507
 
 ## Build Instructions
 
