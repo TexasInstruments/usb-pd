@@ -167,7 +167,7 @@ DEAD_BATTERY_TASK_START:
             goto DEAD_BATTERY_TASK_START;
         }
 
-        if(curBootFlagRegister.deadBatteryFlag == 1)
+        if(curBootFlagRegister.bits.deadBatteryFlag == 1)
         {
             Display_printf(display, 0, 0, "Dead battery flag detected!");
         }
@@ -205,7 +205,7 @@ DEAD_BATTERY_TASK_START:
             goto DEAD_BATTERY_TASK_START;
         }
 
-        if(curBootFlagRegister.deadBatteryFlag == 0)
+        if(curBootFlagRegister.bits.deadBatteryFlag == 0)
         {
             /* Set a breakpoint here to demonstrate functionality. */
             Display_printf(display, 0, 0, "Dead battery flag cleared successfully!");

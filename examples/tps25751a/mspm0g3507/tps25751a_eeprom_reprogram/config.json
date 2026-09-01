@@ -1,0 +1,29 @@
+{
+  "questionnaire": {
+    "device": "TPS25751A",
+    "toolBuildVersion": "2.0.0",
+    "answers": [
+      null,
+      1,
+      4,
+      4,
+      2,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      3,
+      0.05,
+      0.04,
+      0.04
+    ],
+    "vendorId": "0000",
+    "productId": "0000",
+    "version": "1.0.0.2"
+  }
+}

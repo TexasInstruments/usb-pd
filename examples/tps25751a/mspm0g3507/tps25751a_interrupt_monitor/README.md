@@ -132,9 +132,6 @@ After the device in in application mode, the code example immediately checks the
 After reading out the event register, the MSPM0 immediately clears the pending events and then prints out the contents of the INT_EVENT register as seen below in the terminal print out:
 ![Terminal](./doc/terminal.png "Terminal")
 
-The full [Saleae](https://saleae.com/) logic trace can be found below:
-[logic.sal](https://github.com/TexasInstruments/usb-pd/blob/main/examples/tps25751/mspm0g3507/tps25751_patch_load_from_mcu/logic.sal)
-
 ## Licensing
 
 See [LICENSE.md](https://github.com/TexasInstruments/usb-pd/blob/main/LICENSE)

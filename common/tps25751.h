@@ -216,26 +216,30 @@ typedef union
 /* Boot Flags Register */
 typedef struct __attribute__((packed)) sBootFlagsRegister 
 {
-    uint8_t  numOfBytes         : 8;
-    uint8_t  patchHeaderError   : 1;
-    uint8_t  reserved0          : 1;
-    uint8_t  deadBatteryFlag    : 1;
-    uint8_t  i2cEEPROMPresent   : 1;
-    uint8_t  region0            : 1;
-    uint8_t  region1            : 1;
-    uint8_t  region0Invalid     : 1;
-    uint8_t  region1Invalid     : 1;
-    uint8_t  region0EEPROMError : 1;
-    uint8_t  region1EEPROMError : 1;
-    uint8_t  patchDownloadError : 1;
-    uint8_t  reserved1          : 1;
-    uint8_t  region0CRCFail     : 1;
-    uint8_t  region1CRCFail     : 1;
-    uint8_t  reserved2          : 5;
-    uint8_t  systemTSD          : 1;
-    uint16_t  reserved3         : 9;
-    uint8_t  patchConfigSource  : 3;
-    uint8_t  revisionID         : 8;
+    uint8_t bytes[17];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes         : 8;
+        uint8_t  patchHeaderError   : 1;
+        uint8_t  reserved0          : 1;
+        uint8_t  deadBatteryFlag    : 1;
+        uint8_t  i2cEEPROMPresent   : 1;
+        uint8_t  region0            : 1;
+        uint8_t  region1            : 1;
+        uint8_t  region0Invalid     : 1;
+        uint8_t  region1Invalid     : 1;
+        uint8_t  region0EEPROMError : 1;
+        uint8_t  region1EEPROMError : 1;
+        uint8_t  patchDownloadError : 1;
+        uint8_t  reserved1          : 1;
+        uint8_t  region0CRCFail     : 1;
+        uint8_t  region1CRCFail     : 1;
+        uint8_t  reserved2          : 5;
+        uint8_t  systemTSD          : 1;
+        uint16_t  reserved3         : 9;
+        uint8_t  patchConfigSource  : 3;
+        uint8_t  revisionID         : 8;
+    } bits;
 } tBootFlagsRegister;
 
 /* Port Configuration Register */
@@ -304,6 +308,60 @@ typedef union
         uint8_t  reserved0                      : 5;
     } bits;
 } tLiquidDetectionConfiguration;
+
+/* Autonegotiate Sink Register */
+typedef union 
+{
+    uint8_t bytes[25];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes                        : 8;
+        uint8_t  autoNegRDOPriority                : 1;
+        uint8_t  noUSBSusp                         : 1;
+        uint8_t  autoComputeSinkMinPower           : 1;
+        uint8_t  noCapabilityMismatch              : 1;
+        uint8_t  autoComputeSinkMinVoltage         : 1;
+        uint8_t  autoComputeSinkMaxVoltage         : 1;
+        uint8_t  autoDisInputOnCapMistmatch        : 1;
+        uint16_t  reserved0                        : 15;
+        uint16_t  autoNegSinkMinRequiredPower      : 10;
+        uint16_t  autoNegMaxVoltage                : 10;
+        uint16_t  autoNegMinVoltage                : 10;
+        uint16_t  autoNegCapMismatchPower          : 10;
+        uint8_t  reserved1                         : 2;
+        uint8_t  ppsEnableSinkMode                 : 1;
+        uint8_t  ppsRequestInterval                : 2;
+        uint8_t  ppsSourceOperatingMode            : 1;
+        uint8_t  ppsRequiredFullVoltageRange       : 1;
+        uint8_t  ppsDisableSinkUponNonAPDOContract : 1;
+        uint32_t  reserved2                        : 26;
+        uint8_t  ppsOperatingCurrent               : 7;
+        uint8_t  reserved3                         : 2;
+        uint16_t  ppsOutputVoltage                 : 11;
+        uint32_t reserved4                         : 32;
+        uint32_t reserved5                         : 32;
+        uint32_t reserved6                         : 12;
+    } bits;
+} tAutonegotiateSinkRegister;
+
+typedef union
+{
+    uint8_t bytes[5];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes              : 8;
+        uint16_t  minMaxOperatingCurrent : 10;
+        uint16_t  operatingCurrent       : 10;
+        uint8_t  reserved0               : 3;
+        uint8_t  unchunckedSupported     : 1;
+        uint8_t  noUSBSuspend            : 1;
+        uint8_t  usbCommunicationCapable : 1;
+        uint8_t  capabilityMismatch      : 1;
+        uint8_t  giveBackFlag            : 1;
+        uint8_t  objectPosition          : 4;
+    } bits;
+} tActiveRDORegister;
+
 
 /* 4CC Command Template */
 typedef struct __attribute__((packed)) s4CCCommand
@@ -432,6 +490,74 @@ typedef union
     } bits;
 } tI2CwDataReg;
 
+/* FLad Data */
+#define TPS25751_FLAD_DATA_PAYLOAD_SIZE 5
+typedef union
+{
+    uint8_t bytes[TPS25751_FLAD_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint32_t newPtr                : 32;
+    } bits;
+} tFLadDataRegister;
+
+/* FLrd Data and Response */
+#define TPS25751_FLRD_DATA_PAYLOAD_SIZE 5
+typedef union
+{
+    uint8_t bytes[TPS25751_FLRD_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint32_t readAddr              : 32;
+    } bits;
+} tFLrdDataRegister;
+
+typedef union
+{
+    uint8_t bytes[17];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint8_t readData[16];
+    } bits;
+} tFLrdResponse;
+
+/* FLvy Data and Response */
+#define TPS25751_FLVY_DATA_PAYLOAD_SIZE 5
+typedef union
+{
+    uint8_t bytes[TPS25751_FLVY_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint32_t verifyAddr            : 32;
+    } bits;
+} tFLvyDataRegister;
+
+typedef union
+{
+    uint8_t bytes[2];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint8_t returnCode             : 8;
+    } bits;
+} tFLvyResponse;
+
+/* FLwd Data and Response */
+#define TPS25751_FLWD_DATA_PAYLOAD_SIZE 33
+typedef union
+{
+    uint8_t bytes[TPS25751_FLRD_DATA_PAYLOAD_SIZE];
+    struct __attribute__((packed))
+    {
+        uint8_t numOfBytes             : 8;
+        uint8_t payLoadData[32];
+    } bits;
+} tFLwdDataRegister;
+
 /* Register Addresses */
 #define TPS25751_MODE_REG                    0x03
 #define TPS25751_CUST_USE_REG                0x06
@@ -446,7 +572,9 @@ typedef union
 #define TPS25751_SOURCE_CAP_REG              0x30
 #define TPS25751_SINK_CAP_REG                0x33
 #define TPS25751_POWER_STATUS_REG            0x3F
+#define TPS25751_AUTONEG_SINK_REG            0x37
 #define TPS25751_BOOT_FLAGS_REG              0x2D
+#define TPS25751_ACTIVE_RDO_REG              0x35
 #define TPS25751_LIQUID_DETECT_CONFIG_REG    0x98
 
 #define TPS25751_4CC_GSrc_CMD {0x47, 0x53, 0x72, 0x43}
@@ -455,5 +583,11 @@ typedef union
 #define TPS25751_4CC_PBMc_CMD {0x50, 0x42, 0x4D, 0x63}
 #define TPS25751_4CC_I2Cr_CMD {0x49, 0x32, 0x43, 0x72}
 #define TPS25751_4CC_I2Cw_CMD {0x49, 0x32, 0x43, 0x77}
+#define TPS25751_4CC_FLad_CMD {0x46, 0x4C, 0x61, 0x64}
+#define TPS25751_4CC_FLrd_CMD {0x46, 0x4C, 0x72, 0x64}
+#define TPS25751_4CC_FLwd_CMD {0x46, 0x4C, 0x77, 0x64}
+#define TPS25751_4CC_FLvy_CMD {0x46, 0x4C, 0x76, 0x79}
+#define TPS25751_4CC_GAID_CMD {0x47, 0x41, 0x49, 0x44}
+#define TPS25751_4CC_ANeg_CMD {0x41, 0x4E, 0x65, 0x67}
 
 #endif
