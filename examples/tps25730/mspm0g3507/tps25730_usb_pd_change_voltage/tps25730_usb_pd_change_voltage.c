@@ -33,23 +33,11 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
-
-/* Driver Header files */
-#include <ti/display/DisplayUart.h>
-#include <ti/drivers/GPIO.h>
-#include <ti/drivers/I2C.h>
-
-/* Driver configuration */
-#include "ti_drivers_config.h"
+#include <math.h>
 
 /* USB Configuration */
 #include "tps25730.h"
-
-/* I2C target addresses */
-const uint8_t i2cTargetAddr = 0x20;
-
-/* Structures for driver development */
-static Display_Handle display;
+#include "tps_usbpd_i2c_driver.h"
 
 /* USB Structures */
 static tSinkSourceCapabilities sinkCapabilities;
@@ -66,115 +54,69 @@ const t4CCCommand gSrcCommand =
  */
 void *mainThread(void *arg0)
 {
-    I2C_Handle i2c;
-    I2C_Params i2cParams;
-    I2C_Transaction i2cTransaction;
     uint8_t addrReg;
 
-    /* Call driver init functions */
-    Display_init();
-    I2C_init();
+    /* Call driver init functions and create RTOS objects */
+    TPS_USBPD_initializeDevice();
+    TPS_USBPD_setI2CTargetAddress(0x20);
 
-    /* Open the UART display for output */
-    display = Display_open(Display_Type_UART, NULL);
-    if (display == NULL)
-    {
-        while (1)
-        {
-        }
-    }
-
-    Display_printf(display, 0, 0, "--- TPS25730 Code Example ---\n");
-
-    /* Create I2C for usage */
-    I2C_Params_init(&i2cParams);
-    i2cParams.bitRate = I2C_400kHz;
-    i2c               = I2C_open(CONFIG_I2C_TMP, &i2cParams);
-    if (i2c == NULL)
-    {
-        Display_printf(display, 0, 0, "Error Initializing I2C\n");
-        while (1)
-        {
-        }
-    } else
-    {
-        Display_printf(display, 0, 0, "I2C Initialized!\n");
-    }
+    TPS_USBPD_logMessage("--- TPS25730 Code Example ---\n");
 
     /* Reading the PDOs initially */
     addrReg = TPS25730_SINK_CAP_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &sinkCapabilities;
-    i2cTransaction.readCount  = sizeof(sinkCapabilities);
-    i2cTransaction.targetAddress = i2cTargetAddr;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &sinkCapabilities, sizeof(sinkCapabilities)) == false)
     {
-        Display_printf(display, 0, 0, "Error reading source PDOs\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         while (1)
         {
         }
     }
 
-    Display_printf(display, 0, 0, "---PDO1 Parameters (Before) ---\n");
-    Display_printf(display, 0, 0, "Min Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.minimumVoltage * 0.05f);
-    Display_printf(display, 0, 0, "Max Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.maximumVoltage * 0.05f);
-    Display_printf(display, 0, 0, "Current: %fA\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.operationalCurrent * 0.01f);
+    TPS_USBPD_logMessage("---PDO1 Parameters (Before) ---\n");
+    TPS_USBPD_logMessage("Min Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.minimumVoltage * 0.05f);
+    TPS_USBPD_logMessage("Max Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.maximumVoltage * 0.05f);
+    TPS_USBPD_logMessage("Current: %fA\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.operationalCurrent * 0.01f);
 
     /* Changing the voltage to 9V (9/.05 = 180)*/
     sinkCapabilities.sinkPDOs[0].bits.maximumVoltage = 180;
     sinkReadPacket.writeAddr = TPS25730_SINK_CAP_REG;
     memcpy(&sinkReadPacket.sinkSourceCap, &sinkCapabilities, sizeof(tSinkSourceCapabilities));
-    i2cTransaction.writeCount = sizeof(tSinkSourceCapabilities) + 1;
-    i2cTransaction.writeBuf = &sinkReadPacket;
-    i2cTransaction.readCount = 0;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&sinkReadPacket, sizeof(tSinkSourceCapabilities) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "Error writing sink PDOs\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         while (1)
         {
         }
     }
 
-    Display_printf(display, 0, 0, "Updated PDO1 maximum voltage to 9V.\n");
+    TPS_USBPD_logMessage("Updated PDO1 maximum voltage to 9V.\n");
 
     /* Issuing the 4CC command to redo the source capabilities */
-    i2cTransaction.writeBuf = (void*)&gSrcCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+   if(TPS_USBPD_i2cTransfer((void*)&gSrcCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "Error issuing 4CC command\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         while (1)
         {
         }
     }
 
-    Display_printf(display, 0, 0, "Issued GSrC 4CC command.\n");
+    TPS_USBPD_logMessage("Issued GSrC 4CC command.\n");
 
     /* Reading the PDOs back to make sure it was changed */
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &sinkCapabilities;
-    i2cTransaction.readCount  = sizeof(sinkCapabilities);
-    i2cTransaction.targetAddress = i2cTargetAddr;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &sinkCapabilities, sizeof(sinkCapabilities)) == false)
     {
-        Display_printf(display, 0, 0, "Error reading sink PDOs\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         while (1)
         {
         }
     }
 
-    Display_printf(display, 0, 0, "---PDO1 Parameters (After) ---\n");
-    Display_printf(display, 0, 0, "Min Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.minimumVoltage * 0.05f);
-    Display_printf(display, 0, 0, "Max Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.maximumVoltage * 0.05f);
-    Display_printf(display, 0, 0, "Current: %fA\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.operationalCurrent * 0.01f);
+    TPS_USBPD_logMessage("---PDO1 Parameters (After) ---\n");
+    TPS_USBPD_logMessage("Min Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.minimumVoltage * 0.05f);
+    TPS_USBPD_logMessage("Max Voltage: %fV\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.maximumVoltage * 0.05f);
+    TPS_USBPD_logMessage("Current: %fA\n", (float_t)sinkCapabilities.sinkPDOs[0].bits.operationalCurrent * 0.01f);
 
-    I2C_close(i2c);
-    Display_printf(display, 0, 0, "I2C closed!");
+    TPS_USBPD_closeDevice();
+
     return (NULL);
 }

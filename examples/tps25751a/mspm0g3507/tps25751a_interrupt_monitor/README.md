@@ -27,11 +27,11 @@ In this configuration, the following connections are made:
 
 - I2Ct_IRQ of the TPS25751A is connected to PB24 of the LP-MSPM0G3507
 
+Other hardware configurations and platforms are possible to use. Please refer to the [README.md](https://github.com/TexasInstruments/usb-pd) in the repository root for how to connect the TPS25751A to a different MCU platform.
+
 ## Build Instructions
 
 Please refer to the build instructions included in the root of the examples repository [README.md](https://github.com/TexasInstruments/usb-pd).
-
-This code example was built using the [MSP M0 SDK](https://www.ti.com/tool/MSPM0-SDK) **v2_06_00_05** and [Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) **v20.4.0.13**. This code example leverages TI-Drivers for UART logging and I2C communication as well as the FreeRTOS kernel included in the MSPM0 SDK.
 
 ## Usage
 
@@ -76,57 +76,36 @@ Using these header files, this code example keeps a "shadow" copy of the device'
 In this code example, we setup the MSPM0 to listen for a falling edge interrupt on the I2Ct_IRQ line. This is done periodically throughout the code to prevent polling the I2C line and waiting for certain events to take place:
 
 ```c
-        Display_printf(display, 0, 0, "\nPending on I2Ct_IRQ...");
-        xSemaphoreTake(xSemaphore, portMAX_DELAY);
-```
-
-The interrupt handler for the interrupt GPIO can be seen below:
-
-```c
-void interruptEventCallback(uint_least8_t index)
-{
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
-}
+        TPS_USBPD_logMessage("\nPending on I2Ct_IRQ...");
+        TPS_USBPD_pendOnIRQ(UINT32_MAX);
 ```
 
 After booting up, the device periodically reads the MODE register and waits for it to return that the device is in APP mode:
 
 ```c
-    /* Waiting for the device to be in APP mode  */
-    modeReg.mode = 0;
-    addrReg = TPS25751_MODE_REG;
-    Display_printf(display, 0, 0, "Waiting for device to be in APP mode...");
+    TPS_USBPD_logMessage("Waiting for device to be in APP mode...");
+
     while (modeReg.mode != TPS25751_MODE_APP)
     {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &modeReg;
-        i2cTransaction.readCount  = sizeof(tModeRegister);
-
-        I2C_transfer(i2c, &i2cTransaction);
+        TPS_USBPD_delayMS(10);
+        TPS_USBPD_i2cTransfer(&addrReg, 1, &modeReg, sizeof(tModeRegister));
     }
+
+    TPS_USBPD_logMessage("    device booted into APP mode!");
 ```
 
 After the device in in application mode, the code example immediately checks the interrupt status by querying the INT_EVENT register:
 
 ```c
-    /* Reading out interrupt */
-    addrReg = TPS25751_INT_EVENT_REG;
-    i2cTransaction.writeBuf = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readCount = sizeof(tIntEventRegister);
-    i2cTransaction.readBuf = &curTriggeredIntsReg;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
-    {
-        /* In this case we NAKed. Normally we would fault out here, but it is possible 
-            that the device just isn't powered up so let's delay for 100ms and then
-            try again */
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-        continue;
-    }
+        /* Reading out interrupt */
+        addrReg = TPS25751_INT_EVENT_REG;
+        if(TPS_USBPD_i2cTransfer(&addrReg, 1,
+                                &curTriggeredIntsReg,
+                                sizeof(tIntEventRegister)) == false)
+        {
+            TPS_USBPD_delayMS(100);
+            continue;
+        }
 ```
 
 After reading out the event register, the MSPM0 immediately clears the pending events and then prints out the contents of the INT_EVENT register as seen below in the terminal print out:

@@ -214,9 +214,9 @@ typedef union
 } tPowerStatusRegister;
 
 /* Boot Flags Register */
-typedef struct __attribute__((packed)) sBootFlagsRegister 
+typedef union 
 {
-    uint8_t bytes[17];
+    uint8_t bytes[6];
     struct __attribute__((packed))
     {
         uint8_t  numOfBytes         : 8;

@@ -27,6 +27,8 @@ The [TPS25751EVM](https://www.ti.com/tool/TPS25751EVM) is used with the [LP-MSPM
 
 In this configuration, the red wire is I2C data (SDA), the green wire is I2C clock (SCL), the orange wire is I2C interrupt, and the yellow wire is ground (GND).  Also note that PB24 is used for I2C interrupts so the jumper J9 must be removed on the MSPM0 LaunchPad.
 
+Other hardware configurations and platforms are possible to use. Please refer to the [README.md](https://github.com/TexasInstruments/usb-pd) in the repository root for how to connect the TPS25751 to a different MCU platform.
+
 To simulate an I2C peripheral device a [TotalPhase Ardvark I2C/SPI](https://www.totalphase.com/products/aardvark-i2cspi/) tool is used. This is a power tool that allows a host to "emulate" an I2C target and provide a dummy connection for the sake of debugging. The I2Cc_SDA, I2Cc_SCL, and ground lines of the TPS25751EVM are connected to the Ardvark controller as seen below:
 
 ![TPS25751EVM](./doc/ardvark.jpg "Ardvarl=k Connections")
@@ -34,8 +36,6 @@ To simulate an I2C peripheral device a [TotalPhase Ardvark I2C/SPI](https://www.
 ## Build Instructions
 
 Please refer to the build instructions included in the root of the examples repository [README.md](https://github.com/TexasInstruments/usb-pd).
-
-This code example was built using the [MSP M0 SDK](https://www.ti.com/tool/MSPM0-SDK) **v2_06_00_05** and [Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) **v20.4.0.13**. This code example leverages TI-Drivers for UART logging and I2C communication as well as the FreeRTOS kernel included in the MSPM0 SDK.
 
 ## Usage
 
@@ -75,23 +75,22 @@ A couple of notes:
 First in the code example, we make sure that the device is in APP mode and that we clear any lingering interrupts. Next,  to setup the I2C write passthrough command, the corresponding parameters in the setup structure are populated and sent to the CMD data register (0x09);:
 
 ```c
-   /* Note we are adding the +1 here to account for the register offset byte
+    /* Setting up the I2C Write */
+    TPS_USBPD_logMessage("Setting up I2C write...");
+
+    /* Note we are adding the +1 here to account for the register offset byte
         that gets sent at the start of the transaction */
     curI2CWrite.bits.numOfBytesPayload = sizeof(curI2CBuffer) + 1;
     curI2CWrite.bits.registerOffset = 0xA5;
     curI2CWrite.bits.targetAddr = 0x42;
     memcpy(curI2CWrite.bits.payloadBuffer, curI2CBuffer, sizeof(curI2CBuffer));
-
+    
     /* Setting up the actual I2C transaction to populate the data register*/
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
     memcpy(&curWriteCommand.registerData, &curI2CWrite.bytes, sizeof(tI2CwDataReg));
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.readCount = 0;
-    i2cTransaction.writeCount = sizeof(tI2CwDataReg) + 1;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&curWriteCommand, sizeof(tI2CwDataReg) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 ```
@@ -149,7 +148,7 @@ The read parameters are filled out and written to the CMD1 data register as seen
 
 ```c
     /* Setting up the I2C Read */
-    Display_printf(display, 0, 0, "Setting up I2C read...");
+    TPS_USBPD_logMessage("Setting up I2C read...");
     curI2CRead.bits.numOfBytesPayload = sizeof(curI2CReadBuffer);
     curI2CRead.bits.registerOffset = 0xA5;
     curI2CRead.bits.targetAddr = 0x42;
@@ -157,15 +156,12 @@ The read parameters are filled out and written to the CMD1 data register as seen
     /* Setting up the actual I2C transaction to populate the data register */
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
     memcpy(&curWriteCommand.registerData, &curI2CRead.bytes, sizeof(tI2CrDataReg));
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.readCount = 0;
-    i2cTransaction.writeCount = sizeof(tI2CrDataReg) + 1;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&curWriteCommand, sizeof(tI2CrDataReg) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
+
 ```
 
 Specifying the ***registerOffset*** parameter in the case of I2Cr means that the USB-PD controller will first write one byte as specified by the ***registerOffset*** parameter, followed by a repeated I2C start, followed by the specified read command. 
@@ -173,32 +169,23 @@ Specifying the ***registerOffset*** parameter in the case of I2Cr means that the
 After setting up the parameters,  the actual 4CC command is issued:
 
 ```c
-   /* Now that data register is populated, issuing 4CC command to read */
-    Display_printf(display, 0, 0, "Issuing I2Cr 4CC command");
-    i2cTransaction.writeBuf = (void*)&i2cReadCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    /* Now that data register is populated, issuing 4CC command to read */
+    TPS_USBPD_logMessage("Issuing I2Cr 4CC command...");
+    if(TPS_USBPD_i2cTransfer((void*)&i2cReadCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "Error issuing 4CC command\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 ```
 
-We go into low-power mode on the MSPM0 and wait for the interrupt line of I2Ct to toggle and tell us that CMD1 completed successfuly. After verifying success, we read the response data from the CMD1 data register and print out the resulting payload on the terminal:
+We wait for the interrupt line of I2Ct to toggle and tell us that CMD1 completed successfully. After verifying success, we read the response data from the CMD1 data register and print out the resulting payload on the terminal:
 
 ```c
     /* Reading the response */
     addrReg = TPS25751_CMD1_DATA_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = i2cReadRespReg.bytes;
-    i2cTransaction.readCount  = sizeof(tI2CrRespReg);
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, i2cReadRespReg.bytes, sizeof(tI2CrRespReg)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 ```

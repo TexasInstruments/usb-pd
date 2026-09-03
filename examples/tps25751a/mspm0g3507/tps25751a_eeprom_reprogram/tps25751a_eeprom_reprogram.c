@@ -34,31 +34,18 @@
 #include <unistd.h>
 #include <string.h>
 
-/* Driver Header files */
-#include <ti/display/DisplayUart.h>
-#include <ti/drivers/GPIO.h>
-#include <ti/drivers/I2C.h>
-
 /* Driver configuration */
 #include "ti_drivers_config.h"
-#include <FreeRTOS.h>
-#include <semphr.h>
 
 /* USB Configuration */
 #include "tps25751.h"
 #include "tps25751a_eeprom_reprogram.h"
+#include "tps_usbpd_i2c_driver.h"
 
 /* Functions/Structures for driver development */
-void interruptEventCallback(uint_least8_t index);
-static void drainSemaphoreObject(SemaphoreHandle_t xSemaphore);
 static bool pendOnCMD1Interrupt(void);
 static bool writeEEPROMData(uint8_t* writeData, uint16_t destAddr, size_t dataSize, bool doFLRD);
 static bool readEEPROMData(uint16_t readAddr, uint8_t* readData, size_t readSize);
-
-/* Driver/RTOS Objects */
-static I2C_Handle i2cHandle;
-static Display_Handle display;
-SemaphoreHandle_t xSemaphore;
 
 /* Event register to read currently triggered flags */
 static tIntEventRegister curTriggeredIntsReg;
@@ -126,8 +113,6 @@ const t4CCCommand GAID4CCCommand =
  */
 void *mainThread(void *arg0)
 {
-    I2C_Params i2cParams;
-    I2C_Transaction i2cTransaction;
     uint8_t addrReg;
     tModeRegister modeReg;
     uint32_t newRegPointer, newRegStart;
@@ -136,121 +121,64 @@ void *mainThread(void *arg0)
     uint16_t zeroedPointer = 0;
 
     /* Call driver init functions and create RTOS objects */
-    Display_init();
-    I2C_init();
-    GPIO_init();
-    xSemaphore = xSemaphoreCreateCounting(1,0);
-
-    /* Configuring the GPIO input interrupt */
-    GPIO_setConfig(CONFIG_GPIO_PD_IRQ, GPIO_CFG_IN_PU | GPIO_CFG_IN_INT_FALLING | CONFIG_GPIO_PD_IRQ_IOMUX);
-    GPIO_setCallback(CONFIG_GPIO_PD_IRQ, interruptEventCallback);
-    GPIO_enableInt(CONFIG_GPIO_PD_IRQ);
-
-     /* Open the UART display for output */
-    display = Display_open(Display_Type_UART, NULL);
-    if (display == NULL)
-    {
-        while (1)
-        {
-        }
-    }
+    TPS_USBPD_initializeDevice();
 
     /* Initializing the initial structures */
     memset(curEventRegister.bytes + 1, 0x00, sizeof(tIntEventRegister) - 1);
     memset(clearAllEventReg.bytes + 1, 0xFF, sizeof(tIntEventRegister) - 1);
 
-    Display_printf(display, 0, 0, "\n--- TPS25751A EEPROM Reprogrammer ---");
-
-    /* Create I2C for usage */
-    I2C_Params_init(&i2cParams);
-    i2cParams.bitRate = I2C_100kHz;
-    i2cHandle = I2C_open(CONFIG_I2C_TMP, &i2cParams);
-    if (i2cHandle == NULL)
-    {
-        Display_printf(display, 0, 0, "Error Initializing I2C!");
-        while (1)
-        {
-        }
-    }
-    else
-    {
-        Display_printf(display, 0, 0, "I2C Initialized!");
-    }
-
-    /* Setting the peripheral address */
-    i2cTransaction.targetAddress = TPS25751_I2C_TARGET_ADDR;
+    TPS_USBPD_logMessage("\n--- TPS25751A EEPROM Reprogrammer ---");
 
     /* Waiting for the device to be booted  */
     modeReg.mode = 0;
     addrReg = TPS25751_MODE_REG;
-    Display_printf(display, 0, 0, "Waiting for device to boot...");
+    TPS_USBPD_logMessage("Waiting for device to boot...");
     while ((modeReg.mode != TPS25751_MODE_APP))
     {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &modeReg;
-        i2cTransaction.readCount  = sizeof(tModeRegister);
-
-        I2C_transfer(i2cHandle, &i2cTransaction);
+        TPS_USBPD_delayMS(10);
+        TPS_USBPD_i2cTransfer(&addrReg, 1, &modeReg, sizeof(tModeRegister));
     }
 
-    Display_printf(display, 0, 0, "    Device is booted!");
+    TPS_USBPD_logMessage("    Device is booted!");
     
     /* Setting interrupt mask to enable CMD1  */
-    Display_printf(display, 0, 0, "Enabling CMD1 interrupts...");
+    TPS_USBPD_logMessage("Enabling CMD1 interrupts...");
     curEventRegister.bits.cmd1Complete = 1;
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_MASK_REG;
     memcpy(&curWriteCommand.registerData, &curEventRegister.bytes, sizeof(tIntEventRegister));
-    i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-    i2cTransaction.writeBuf = &curWriteCommand;
-    i2cTransaction.readCount = 0;
 
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Enabled!");
+    TPS_USBPD_logMessage("    Enabled!");
 
     /* Clearing all active interrupts */
-    Display_printf(display, 0, 0, "Clearing lingering interrupts...");
+    TPS_USBPD_logMessage("Clearing lingering interrupts...");
     memcpy(&curWriteCommand.registerData, &clearAllEventReg.bytes, sizeof(tIntEventRegister));
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
-    i2cTransaction.writeBuf = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-    i2cTransaction.readCount = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Interrupts cleared!");
-
-    /* Making sure interrupt is not pended */
-    drainSemaphoreObject(xSemaphore);
+    TPS_USBPD_logMessage("    Interrupts cleared!");
 
     /* Checking to see if region 0 of the EEPROM has an error or is invalid */
 
     /* Reading the boot flags register */
-    Display_printf(display, 0, 0, "Reading boot flags register...");
+    TPS_USBPD_logMessage("Reading boot flags register...");
     addrReg = TPS25751_BOOT_FLAGS_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &curBootFlagsReg;
-    i2cTransaction.readCount  = sizeof(tBootFlagsRegister);
-
-    if(I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curBootFlagsReg, sizeof(tBootFlagsRegister)) == false)
     {
-        Display_printf(display, 0, 0, "    NAK on boot flags read!");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Read!");
+    TPS_USBPD_logMessage("    Read!");
 
     /* Setting the appropriate pointer variables to write depending on if region 0 is
         valid or not */
@@ -260,7 +188,7 @@ void *mainThread(void *arg0)
         newRegStart = 0x0800;
         oldRegPointer = 0;
         oldRegStart = 0x4400;
-        Display_printf(display, 0, 0, "    EEPROM region set to region 0.");
+        TPS_USBPD_logMessage("    EEPROM region set to region 0.");
     }
     else
     {
@@ -268,10 +196,10 @@ void *mainThread(void *arg0)
         newRegStart = 0x4400;
         oldRegPointer = 0x0400;
         oldRegStart = 0x800;
-        Display_printf(display, 0, 0, "    EEPROM region set to region 1.");
+        TPS_USBPD_logMessage("    EEPROM region set to region 1.");
     }
 
-    Display_printf(display, 0, 0, "Writing region pointer at 0x%x to 0x%x...",newRegPointer,
+    TPS_USBPD_logMessage("Writing region pointer at 0x%x to 0x%x...", newRegPointer,
                                                      zeroedPointer);
 
     /* Writing the New Region Pointer */
@@ -281,11 +209,11 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Written!");
+    TPS_USBPD_logMessage("    Written!");
 
     /* Carving new data up into 32 byte chunks and writing them via FLwd */
-    Display_printf(display, 0, 0, "Carving up data and sending data...");
-    Display_printf(display, 0, 0, "    starting at address 0x%x",newRegStart);
+    TPS_USBPD_logMessage("Carving up data and sending data...");
+    TPS_USBPD_logMessage("    starting at address 0x%x",newRegStart);
         
     for(ii=0;ii<gSizeLowRegionArray;ii+=TPS25751_EEPROM_SEG_SIZE)
     {
@@ -299,67 +227,54 @@ void *mainThread(void *arg0)
         }
     }
 
-    Display_printf(display, 0, 0, "    All bytes transferred!");
+    TPS_USBPD_logMessage("    All bytes transferred!");
 
     /* Executing FLvy to verify */
-    Display_printf(display, 0, 0, "Sending FLvy command...");
+    TPS_USBPD_logMessage("Sending FLvy command...");
 
     /* Setting the verify address */
     curFlVYData.bits.verifyAddr = newRegStart;
     memcpy(&curWriteCommand.registerData, &curFlVYData.bytes, sizeof(tFLvyDataRegister));
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
     
-    /* Writing the DATA1 registers for FLvy */
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tFLvyDataRegister) + 1;
-    i2cTransaction.readCount  = 0;
-    
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    /* Writing the DATA1 registers for FLvy and issuing command */
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tFLvyDataRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
-        return (false);
+        TPS_USBPD_logMessage("    Error issuing FLvy command\n");
+        goto TPS25751ErrorClosure;
     }
 
-    i2cTransaction.writeBuf = (void*)&flvy4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&flvy4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    Error issuing FLvy command\n");
+        TPS_USBPD_logMessage("    Error issuing FLvy command\n");
         goto TPS25751ErrorClosure;
     }
 
     if(pendOnCMD1Interrupt() == false)
     {
-        Display_printf(display, 0, 0, "    Error waiting for CMD1 interrupt!\n");
+        TPS_USBPD_logMessage("    Error waiting for CMD1 interrupt!\n");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Command issued!");
+    TPS_USBPD_logMessage("    Command issued!");
 
     /* Reading back the data and making sure verify actually passed  */
     addrReg = TPS25751_CMD1_DATA_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &flvyResp;
-    i2cTransaction.readCount  = sizeof(tFLvyResponse);
-    
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &flvyResp, sizeof(tFLvyResponse)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
     if(flvyResp.bits.returnCode != 0)
     {
-        Display_printf(display, 0, 0, "    FLvy failed (0x%x)", flvyResp.bits.returnCode);
+        TPS_USBPD_logMessage("    FLvy failed (0x%x)", flvyResp.bits.returnCode);
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    FLvy passed!");
+    TPS_USBPD_logMessage("    FLvy passed!");
 
-    Display_printf(display, 0, 0, "Writing pointer at 0x%x to 0x%x...",newRegPointer, newRegStart);
+    TPS_USBPD_logMessage("Writing pointer at 0x%x to 0x%x...",newRegPointer, newRegStart);
 
     /* Writing the New Region Pointer */
     if(writeEEPROMData((uint8_t*)&newRegStart, newRegPointer,
@@ -368,9 +283,9 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Written!");
+    TPS_USBPD_logMessage("    Written!");
 
-    Display_printf(display, 0, 0, "Writing pointer at 0x%x to 0x%x...",oldRegPointer, zeroedPointer);
+    TPS_USBPD_logMessage("Writing pointer at 0x%x to 0x%x...",oldRegPointer, zeroedPointer);
 
     /* Writing the Old Region Pointer */
     if(writeEEPROMData((uint8_t*)&zeroedPointer, oldRegPointer,
@@ -379,68 +294,53 @@ void *mainThread(void *arg0)
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Written!");
+    TPS_USBPD_logMessage("    Written!");
 
     /* Issuing GAID */
-    Display_printf(display, 0, 0, "Sending GAID command...");
-    i2cTransaction.writeBuf = (void*)&GAID4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    TPS_USBPD_logMessage("Sending GAID command...");
+    if(TPS_USBPD_i2cTransfer((void*)&GAID4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    Error issuing GAID command\n");
+        TPS_USBPD_logMessage("    Error issuing GAID command\n");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Sent!");
+    TPS_USBPD_logMessage("    Sent!");
 
     /* Delaying and waiting for device to boot (and load the EEPROM) */
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    TPS_USBPD_delayMS(5000);
 
     /* Checking customer use register to make sure we have the updated firmware */
-    Display_printf(display, 0, 0, "Reading customer user register...");
+    TPS_USBPD_logMessage("Reading customer user register...");
     addrReg = TPS25751_CUST_USE_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &custReg;
-    i2cTransaction.readCount  = sizeof(tCustomerUseRegister);
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&addrReg, 1, &custReg, sizeof(tCustomerUseRegister)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Read!");
+    TPS_USBPD_logMessage("    Read!");
 
     if((custReg.custRegWord1 != 0xCAFEBEEF) || (custReg.custRegWord2 != 0xDEADBEEF))
     {
-        Display_printf(display, 0, 0, "ERROR! Customer user registers did not match!");
+        TPS_USBPD_logMessage("ERROR! Customer user registers did not match!");
         goto TPS25751ErrorClosure;
     }
     else
     {
-        Display_printf(display, 0, 0, "Customer use registers matched!");
-        Display_printf(display, 0, 0, "Device flashed successfully!");
+        TPS_USBPD_logMessage("Customer use registers matched!");
+        TPS_USBPD_logMessage("Device flashed successfully!");
     }
 
 TPS25751ErrorClosure:
-    I2C_close(i2cHandle);
-    Display_printf(display, 0, 0, "I2C closed!");
+    TPS_USBPD_closeDevice();
     return (NULL);
 }
 
-void interruptEventCallback(uint_least8_t index)
-{
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
-}
 
 /* Simple convenience function that will write data to the provided address and then optionally
     read back and verify written data  */
 static bool writeEEPROMData(uint8_t* writeData, uint16_t destAddr, size_t dataSize, bool doFLRD)
 {
-    I2C_Transaction i2cTransaction;
     uint8_t ii;
 
     if((writeData == NULL) || (dataSize > TPS25751_EEPROM_SEG_SIZE))
@@ -452,33 +352,24 @@ static bool writeEEPROMData(uint8_t* writeData, uint16_t destAddr, size_t dataSi
     curFlADData.bits.newPtr = destAddr;
     memcpy(&curWriteCommand.registerData, &curFlADData.bytes, sizeof(tFLadDataRegister));
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
-    i2cTransaction.targetAddress = TPS25751_I2C_TARGET_ADDR;
     
     /* Writing the DATA1 registers for FLad */
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tFLadDataRegister) + 1;
-    i2cTransaction.readCount  = 0;
-    
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tFLadDataRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
     /* Writing the actual FLad command */
-    i2cTransaction.writeBuf = (void*)&flad4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&flad4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    Error issuing FLad command\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
     if(pendOnCMD1Interrupt() == false)
     {
-        Display_printf(display, 0, 0, "    Error waiting for CMD1 interrupt!\n");
+        TPS_USBPD_logMessage("    Error waiting for CMD1 interrupt!\n");
         return (false);
     }
 
@@ -487,30 +378,22 @@ static bool writeEEPROMData(uint8_t* writeData, uint16_t destAddr, size_t dataSi
     flwdData.bits.numOfBytes = dataSize;
     memcpy(&curWriteCommand.registerData, &flwdData.bytes, sizeof(tFLwdDataRegister));
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.writeCount = dataSize + 2; // Payload + CMD byte + size byte
-    i2cTransaction.readCount  = 0;
-    
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, dataSize + 2, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
-    /* Executing the FLwd command */
-    i2cTransaction.writeBuf = (void*)&flwd4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&flwd4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    Error issuing FLwd command\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
     if(pendOnCMD1Interrupt() == false)
     {
-        Display_printf(display, 0, 0, "    Error waiting for CMD1 interrupt!\n");
+        TPS_USBPD_logMessage("    Error waiting for CMD1 interrupt!\n");
         return (false);
     }
 
@@ -519,14 +402,14 @@ static bool writeEEPROMData(uint8_t* writeData, uint16_t destAddr, size_t dataSi
     {
         if(readEEPROMData(destAddr, writeData, dataSize) == false)
         {
-            Display_printf(display, 0, 0, "    Error reading data back!\n");
+            TPS_USBPD_logMessage("    Error reading data back!\n");
         }
         
         for(ii=0;ii<dataSize;ii++)
         {
             if(flrdResp.bits.readData[ii] != writeData[ii])
             {
-                Display_printf(display, 0, 0, "    Error! Read data didn't match!\n");
+                TPS_USBPD_logMessage("    Error! Read data didn't match!\n");
                 return (false);
             }
         }
@@ -538,51 +421,36 @@ static bool writeEEPROMData(uint8_t* writeData, uint16_t destAddr, size_t dataSi
 /* Convenience function that reads back data from EEPROM */
 static bool readEEPROMData(uint16_t readAddr, uint8_t* readData, size_t readSize)
 {
-    I2C_Transaction i2cTransaction;
-
     /* Setting the start address */
     curFlRDData.bits.readAddr = readAddr;
     memcpy(&curWriteCommand.registerData, &curFlRDData.bytes, sizeof(tFLrdDataRegister));
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
     
     /* Writing the DATA1 registers for FLad */
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tFLrdDataRegister) + 1;
-    i2cTransaction.readCount  = 0;
-    
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&curWriteCommand, sizeof(tFLrdDataRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
     /* Writing the actual FLrd command */
-    i2cTransaction.writeBuf = (void*)&flrd4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&flrd4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    Error issuing FLad command\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
     if(pendOnCMD1Interrupt() == false)
     {
-        Display_printf(display, 0, 0, "    Error waiting for CMD1 interrupt!\n");
+        TPS_USBPD_logMessage("    Error waiting for CMD1 interrupt!\n");
         return (false);
     }
 
     /* Reading back the data and verifying */
     readAddr = TPS25751_CMD1_DATA_REG;
-    i2cTransaction.writeBuf   = &readAddr;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &flrdResp;
-    i2cTransaction.readCount  = sizeof(tFLrdResponse);
-    
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&readAddr, 1, &flrdResp, sizeof(tFLrdResponse)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         return (false);
     }
 
@@ -599,33 +467,23 @@ static bool pendOnCMD1Interrupt(void)
 
 PendOnCMD1Int:
    /* Pending on CMD1 Completion interrupt*/
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    TPS_USBPD_pendOnIRQ(UINT32_MAX);
 
     /* Reading the currently triggered interrupts and clearing them */
     addrReg = TPS25751_INT_EVENT_REG;
-    i2cTransaction.writeBuf = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.targetAddress = TPS25751_I2C_TARGET_ADDR;
-    i2cTransaction.readCount = sizeof(tIntEventRegister);
-    i2cTransaction.readBuf = &curTriggeredIntsReg;
-
-   if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
-   {
-       Display_printf(display, 0, 0, "    USB-PD not responding (NAK)");
-       return (false);
-   }
+    if(TPS_USBPD_i2cTransfer((void*)&addrReg, 1, &curTriggeredIntsReg, sizeof(tIntEventRegister)) == false)
+    {
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
+        return (false);
+    }
 
     /* Clear lingering interrupt*/
     memcpy(&curWriteCommand.registerData, &curTriggeredIntsReg.bytes, sizeof(tIntEventRegister));
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
-    i2cTransaction.writeBuf = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-    i2cTransaction.readCount = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    USB-PD not responding (NAK)");
-       return (false);
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
+        return (false);
     }
 
     /* If it is not the CMD1 trigger interrupt, go back and try again */
@@ -637,12 +495,3 @@ PendOnCMD1Int:
     return (true);
 
 }
-
-static void drainSemaphoreObject(SemaphoreHandle_t xSemaphore)
-{
-    while(xSemaphoreTake(xSemaphore, 0) == pdTRUE)
-    {
-        // Keep taking until no more tokens are available
-    }
-}
-

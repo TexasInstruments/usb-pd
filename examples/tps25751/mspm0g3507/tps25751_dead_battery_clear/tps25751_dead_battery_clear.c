@@ -34,26 +34,9 @@
 #include <unistd.h>
 #include <string.h>
 
-/* Driver Header files */
-#include <ti/display/DisplayUart.h>
-#include <ti/drivers/GPIO.h>
-#include <ti/drivers/I2C.h>
-
-/* Driver configuration */
-#include "ti_drivers_config.h"
-#include <FreeRTOS.h>
-#include <semphr.h>
-
 /* USB Configuration */
 #include "tps25751.h"
-
-/* I2C target addresses */
-const uint8_t i2cTargetAddr = 0x21;
-
-/* Functions/Structures for driver development */
-static Display_Handle display;
-SemaphoreHandle_t xSemaphore;
-void interruptEventCallback(uint_least8_t index);
+#include "tps_usbpd_i2c_driver.h"
 
 /* USB Structures */
 tIntEventRegister curEventRegister;
@@ -71,149 +54,86 @@ const t4CCCommand deadBatteryClearCommand =
  */
 void *mainThread(void *arg0)
 {
-    I2C_Handle i2c;
-    I2C_Params i2cParams;
-    I2C_Transaction i2cTransaction;
     uint8_t addrReg;
 
     /* Call driver init functions and create RTOS objects */
-    Display_init();
-    I2C_init();
-    GPIO_init();
-    xSemaphore = xSemaphoreCreateCounting(1,0);
+    TPS_USBPD_initializeDevice();
 
-    /* Configuring the GPIO input interrupt */
-    GPIO_setConfig(CONFIG_GPIO_PD_IRQ, GPIO_CFG_IN_PU | GPIO_CFG_IN_INT_FALLING | CONFIG_GPIO_PD_IRQ_IOMUX);
-    GPIO_setCallback(CONFIG_GPIO_PD_IRQ, interruptEventCallback);
-    GPIO_enableInt(CONFIG_GPIO_PD_IRQ);
+    TPS_USBPD_logMessage("\n--- TPS25751 Dead Battery Code Example ---");
 
-    /* Open the UART display for output */
-    display = Display_open(Display_Type_UART, NULL);
-    if (display == NULL)
-    {
-        while (1)
-        {
-        }
-    }
-
-    Display_printf(display, 0, 0, "\n--- TPS25751 Dead Battery Code Example ---");
-
-    /* Create I2C for usage */
-    I2C_Params_init(&i2cParams);
-    i2cParams.bitRate = I2C_100kHz;
-    i2c = I2C_open(CONFIG_I2C_TMP, &i2cParams);
-    if (i2c == NULL)
-    {
-        Display_printf(display, 0, 0, "Error Initializing I2C!");
-        while (1)
-        {
-        }
-    } else
-    {
-        Display_printf(display, 0, 0, "I2C Initialized!");
-    }
-
-    /* Setting the peripheral address */
-    i2cTransaction.targetAddress = i2cTargetAddr;
-
+    TPS_USBPD_logMessage("Waiting for I2C interrupt...");
 DEAD_BATTERY_TASK_START:
 
     /* Waiting for the interrupt event */
-    Display_printf(display, 0, 0, "Waiting for I2C interrupt...");
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    TPS_USBPD_pendOnIRQ(UINT32_MAX);
 
     /* Setting up the read transaction to the event register */
     addrReg = TPS25751_INT_EVENT_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &curEventRegister.bytes;
-    i2cTransaction.readCount  = sizeof(tIntEventRegister);
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curEventRegister.bytes, sizeof(tIntEventRegister)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
         goto DEAD_BATTERY_TASK_START;
     }
 
     /* Seeing if there was a plug event  */
     if(curEventRegister.bits.plugInsertRemoval == 1)
     {
-        Display_printf(display, 0, 0, "Plug event detected! Clearing flag.");
+        TPS_USBPD_logMessage("Plug event detected! Clearing flag...");
 
         /* If there is a plug event, clear the plug event flag */
         curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
         memcpy(&curWriteCommand.registerData, &curEventRegister, sizeof(tIntEventRegister));
-        i2cTransaction.writeBuf = &curWriteCommand;
-        i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-        i2cTransaction.readCount = 0;
-        
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
         {
-            Display_printf(display, 0, 0, "Error clearing interrupt event registers!");
+            TPS_USBPD_logMessage("Error clearing interrupt event registers!");
             goto DEAD_BATTERY_TASK_START;
         }
+
         curEventRegister.bits.plugInsertRemoval = 0;
         
-        Display_printf(display, 0, 0, "Reading boot flags register...");
+        TPS_USBPD_logMessage("Reading boot flags register...");
         addrReg = TPS25751_BOOT_FLAGS_REG;
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &curBootFlagRegister;
-        i2cTransaction.readCount  = sizeof(tBootFlagsRegister);
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curBootFlagRegister, sizeof(tBootFlagsRegister)) == false)
         {
-            Display_printf(display, 0, 0, "Error reading boot flag registers!");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto DEAD_BATTERY_TASK_START;
         }
 
         if(curBootFlagRegister.bits.deadBatteryFlag == 1)
         {
-            Display_printf(display, 0, 0, "Dead battery flag detected!");
+            TPS_USBPD_logMessage("Dead battery flag detected!");
         }
         else
         {
-            Display_printf(display, 0, 0, "Dead battery flag not detected!");
+            TPS_USBPD_logMessage("Dead battery flag not detected!");
             goto DEAD_BATTERY_TASK_START;
         }
 
         /* Issuing DBfg command */
-        Display_printf(display, 0, 0, "Issuing DBfg 4CC command");
-
-        i2cTransaction.writeBuf = (void*)&deadBatteryClearCommand;
-        i2cTransaction.writeCount = sizeof(t4CCCommand);
-        i2cTransaction.readCount  = 0;
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        TPS_USBPD_logMessage("Issuing DBfg 4CC command");
+        if(TPS_USBPD_i2cTransfer((void*)&deadBatteryClearCommand, sizeof(t4CCCommand), NULL, 0) == false)
         {
-            Display_printf(display, 0, 0, "Error issuing 4CC command\n");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto DEAD_BATTERY_TASK_START;
         }
 
         /* Otherwise, sleep for a bit and read back the boot register to confirm dead battery
             flag was cleared */
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        TPS_USBPD_delayMS(50);
         addrReg = TPS25751_BOOT_FLAGS_REG;
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &curBootFlagRegister;
-        i2cTransaction.readCount  = sizeof(tBootFlagsRegister);
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curBootFlagRegister, sizeof(tBootFlagsRegister)) == false)
         {
-            Display_printf(display, 0, 0, "Error reading boot flag registers!");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto DEAD_BATTERY_TASK_START;
         }
 
         if(curBootFlagRegister.bits.deadBatteryFlag == 0)
         {
             /* Set a breakpoint here to demonstrate functionality. */
-            Display_printf(display, 0, 0, "Dead battery flag cleared successfully!");
-            __NOP();
+            TPS_USBPD_logMessage("Dead battery flag cleared successfully!");
         }
         else
         {
-            Display_printf(display, 0, 0, "Dead battery flag not cleared!");
+            TPS_USBPD_logMessage("Dead battery flag not cleared!");
             goto DEAD_BATTERY_TASK_START;
         }
     }
@@ -222,12 +142,6 @@ DEAD_BATTERY_TASK_START:
         goto DEAD_BATTERY_TASK_START;
     }
 
-    I2C_close(i2c);
-    Display_printf(display, 0, 0, "I2C closed!");
+    TPS_USBPD_closeDevice();
     return (NULL);
-}
-
-void interruptEventCallback(uint_least8_t index)
-{
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
 }

@@ -25,11 +25,11 @@ In this configuration, the green wire is I2C data (SDA), the red wire is I2C clo
 
 Also note that in order to disable the EEPROM, the jumper **J10** on the TPS25751EVM must be removed. 
 
+Other hardware configurations and platforms are possible to use. Please refer to the [README.md](https://github.com/TexasInstruments/usb-pd) in the repository root for how to connect the TPS25751 to a different MCU platform.
+
 ## Build Instructions
 
 Please refer to the build instructions included in the root of the examples repository [README.md](https://github.com/TexasInstruments/usb-pd).
-
-This code example was built using the [MSP M0 SDK](https://www.ti.com/tool/MSPM0-SDK) **v2_06_00_05** and [Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) **v20.4.0.13**. This code example leverages TI-Drivers for UART logging and I2C communication as well as the FreeRTOS kernel included in the MSPM0 SDK.
 
 ## Usage
 
@@ -76,21 +76,12 @@ typedef union
 } tStatusRegister;
 ```
 
-Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events registers. In this code example, we setup the MSPM0 to listen for a falling edge interrupt on the I2C IRQ line. This is done periodically throughout the code to prevent polling the I2C line and waiting for certain events to take place:
+Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events registers. In this code example, we setup the MCU to listen for a falling edge interrupt on the I2C IRQ line. This is done periodically throughout the code to prevent polling the I2C line and waiting for certain events to take place:
 
 ```c
-/* Waiting for CMD1 interrupt */
+    /* Waiting for CMD1 interrupt */
 WaitForPMBSCMD:
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
-```
-
-The interrupt handler for the interrupt GPIO can be seen below:
-
-```c
-void interruptEventCallback(uint_least8_t index)
-{
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
-}
+    TPS_USBPD_pendOnIRQ(UINT32_MAX);
 ```
 
 After booting up, the device periodically reads the MODE register and waits for it to return that the device is in PTCH mode:
@@ -99,34 +90,25 @@ After booting up, the device periodically reads the MODE register and waits for 
     /* Waiting for the device to be in PTCH mode  */
     modeReg.mode = 0;
     addrReg = TPS25751_MODE_REG;
-    Display_printf(display, 0, 0, "Waiting for device to be in PTCH mode...");
+    TPS_USBPD_logMessage("Waiting for device to be in PTCH mode...");
     while (modeReg.mode != TPS25751_MODE_PTCH)
     {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &modeReg;
-        i2cTransaction.readCount  = sizeof(tModeRegister);
-
-        I2C_transfer(i2c, &i2cTransaction);
+        TPS_USBPD_delayMS(10);
+        TPS_USBPD_i2cTransfer(&addrReg, 1, &modeReg, sizeof(tModeRegister));
     }
 ```
 
-Throughout the code example, the **ready for patch** and **CMD1 complete** interrupts are used for synchronization. As such, the interrupt masks are enabled so that the IRQ line toggles accordingly:
+Throughout the code example, the **CMD1 complete** interrupt is used for synchronization. As such, the interrupt mask is enabled so that the IRQ line toggles accordingly:
 
 ```c
-    /* Setting interrupt mask to enable CMD1 complete and PATCH loaded */
-    Display_printf(display, 0, 0, "Enabling CMD1 interrupts...");
+    /* Setting interrupt mask to enable CMD1 complete */
+    TPS_USBPD_logMessage("Enabling CMD1 interrupts...");
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_MASK_REG;
     memcpy(&curWriteCommand.registerData, &curEventRegister.bytes, sizeof(tIntEventRegister));
-    i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-    i2cTransaction.writeBuf = &curWriteCommand;
-    i2cTransaction.readCount = 0;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+   
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 ```
@@ -146,17 +128,14 @@ Note that the image size is populated during runtime when the PBMs data is persi
 
 ```c
     /* Send PBMs Data */
-    Display_printf(display, 0, 0, "Setting PBMs data...");
+    TPS_USBPD_logMessage("Setting PBMs data...");
     curPBMDataReg.bits.lowerRegionSize = gSizeLowRegionArray;
     memcpy(&curWriteCommand.registerData, &curPBMDataReg.bytes, sizeof(tPBMDataReg));
     curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
-    i2cTransaction.writeBuf = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tPBMDataReg) + 1;
-    i2cTransaction.readCount = 0;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tPBMDataReg) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 ```
@@ -165,76 +144,74 @@ After the PBMs data has been persisted to the device, we are ready to issue the 
 
 ```c
     /* Sending PMBs Command */
-    Display_printf(display, 0, 0, "Sending PBMs command...");
-    i2cTransaction.writeBuf = (void*)&pbms4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    TPS_USBPD_logMessage("Sending PBMs command...");
+    if(TPS_USBPD_i2cTransfer((void*)&pbms4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "Error issuing 4CC command\n");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
     /* Waiting for CMD1 interrupt */
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+WaitForPMBSCMD:
+    TPS_USBPD_pendOnIRQ(UINT32_MAX);
 ```
 
-After verifying that the command went through successfully, we transfer the patch data in one big I2C transaction:
+After verifying that the command went through successfully, we transfer the patch data in one big I2C transaction. Note that we set the new I2C target address to the one that matches the PBM configuration data:
 
 ```c
-    Display_printf(display, 0, 0, "Sending patch data...");
-    i2cTransaction.targetAddress = TPS25751_BURST_REG;
-    i2cTransaction.writeBuf = (void*)(tps25751x_lowRegion_i2c_array);
-    i2cTransaction.writeCount = gSizeLowRegionArray;
-    i2cTransaction.readCount = 0;
+    TPS_USBPD_logMessage("CMD1 DATA read and task successful.");
+    TPS_USBPD_logMessage("Sending data...");
 
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    /* We have to set the target address to the burst register */
+    TPS_USBPD_setI2CTargetAddress(TPS25751_BURST_REG);
+
+
+    if(TPS_USBPD_i2cTransfer((uint8_t*)&tps25751x_lowRegion_i2c_array, gSizeLowRegionArray, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
+
+    TPS_USBPD_logMessage("Data transfer done!");
+    TPS_USBPD_logMessage("Size written: %d", gSizeLowRegionArray);
 ```
 
 After a short delay and verification that the command was executed, we pend on the IRQ semaphore to make sure that the firmware patch was loaded correctly. From there, we poll the MODE register to ensure that we have entered APP mode successfully:
 
 ```c
-   /* Reading the MODE register to verify we are now in APP  mode */
-    Display_printf(display, 0, 0, "Waiting for device to be in APP mode...");
+    TPS_USBPD_logMessage("Waiting for device to be in APP mode...");
     addrReg = TPS25751_MODE_REG;
     modeReg.mode = 0;  
     while (modeReg.mode != TPS25751_MODE_APP)
     {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &modeReg;
-        i2cTransaction.readCount  = sizeof(tModeRegister);
-
-         if (I2C_transfer(i2c, &i2cTransaction) == false)
-        {
-            Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
-            goto TPS25751ErrorClosure;
-        }
+        TPS_USBPD_delayMS(10);
+        TPS_USBPD_i2cTransfer(&addrReg, 1, &modeReg, sizeof(tModeRegister));
     }
+
+    TPS_USBPD_logMessage("Device is in APP, patch loaded!");
 ```
 
 The final step of the program is to read the customer user register to ensure that the values we set in the initial step through the configuration tool persisted correctly to the patch:
 
 ```c
     /* Reading customer use register 1 */
-    Display_printf(display, 0, 0, "Reading customer user register...");
+    TPS_USBPD_logMessage("Reading customer user register...");
     addrReg = TPS25751_CUST_USE_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &custReg;
-    i2cTransaction.readCount  = sizeof(tCustomerUseRegister);
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &custReg, sizeof(tCustomerUseRegister)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
+    }
+
+    if((custReg.custRegWord2 != 0xCAFEBEEF) || (custReg.custRegWord1 != 0xDEADBEEF))
+    {
+        TPS_USBPD_logMessage("ERROR! Customer user registers did not match!");
+        goto TPS25751ErrorClosure;
+    }
+    else
+    {
+        TPS_USBPD_logMessage("Customer use registers matched!");
+        TPS_USBPD_logMessage("Device flashed successfully!");
     }
 ```
 

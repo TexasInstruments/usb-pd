@@ -71,6 +71,10 @@
         </file>
 	    <file path="ti_msp_dl_config.c" openOnCreation="false" excludeFromBuild="false" action="copy">
         </file>
+        <file path="../../../../common/port/tps_mspm0g3507_port.c" openOnCreation="false" excludeFromBuild="false" action="copy">
+        </file>
+        <file path="../../../../common/tps_usbpd_i2c_driver.h" openOnCreation="false" excludeFromBuild="false" action="copy" targetDirectory="inc">
+        </file>
 	    <file path="tps25751a_eeprom_reprogram.c" openOnCreation="true" excludeFromBuild="false" action="copy">
         </file>
 	    <file path="lbr.c" openOnCreation="false" excludeFromBuild="false" action="copy">

@@ -32,10 +32,9 @@
 #ifndef __TPS25751A_PATCH__LOAD__
 #define __TPS25751A_PATCH__LOAD__
 
- #define TPS25751_I2C_TARGET_ADDR     0x21
- #define TPS25751_BURST_REG           0x30
- #define TPS25751_PBMS_TIMEOUT        0x31
- #define MSPM0_I2C_MAX_BURST_PAYLOAD  128
+#define TPS25751_I2C_TARGET_ADDR     0x21
+#define TPS25751_BURST_REG           0x30
+#define TPS25751_PBMS_TIMEOUT        0x31
 
 extern const uint8_t tps25751x_lowRegion_i2c_array[];
 extern int gSizeLowRegionArray;

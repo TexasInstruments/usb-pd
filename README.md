@@ -25,7 +25,7 @@ The code examples in the repository are meant to serve as a reference for interf
 
 - [**TPS26750**](https://www.ti.com/product/TPS26750) - USB Type-C® and USB Power Delivery (PD) 3.2 controller with 240W extended power-range support
 
-The majority of the code examples will leverage communication using the host interface of the USB-PD controllers listed above (over I2C). To interact with the host interface, simple jumper wire can be used to connect the EVM of the corresponding MCU to the EVM of the USB-PD controller.  Each USB-PD controller will have the I2C signals of the host interface brought out to a specific header. An example of how to do this  on the TPS25730EVM can be seen below.
+The majority of the code examples will leverage communication using the host interface of the USB-PD controllers listed above (over I2C). To interact with the host interface, simple jumper wire can be used to connect the EVM of the corresponding MCU to the EVM of the USB-PD controller.  Each USB-PD controller will have the I2C signals of the host interface brought out to a specific header.
 
 Note that in the pictures below, the red wire represents the I2C SDA line and the green wire represents the I2C SCL line (with yellow being ground).
 
@@ -71,27 +71,89 @@ For the TI MSPM0 family of microcontrollers, the code examples are provided with
 
 ## Header Files
 
-For the majority of code examples listed in this repository, a corresponding header file that represent register structures and definitions are provided to simplify acessibility and programming. An example of such header file can be seen below:
+For the majority of code examples listed in this repository, a corresponding header file that represent register structures and definitions are provided to simplify accessibility and programming. An example of such header file can be seen below:
+
+This code example takes the register structures of the TPS25751A's host interface (as described in the [TPS25751A Technical Reference Manual](https://www.ti.com/lit/pdf/SPMU379)) and represents them in a standard C header file. The interrupt event register, for example:
+
+![Interrupt Event](./examples/tps25751a/mspm0g3507/tps25751a_eeprom_reprogram/doc/intevent1.png "Interrupt Event")
+![Interrupt Event](./examples/tps25751a/mspm0g3507/tps25751a_eeprom_reprogram/doc/intevent2.png "Interrupt Event")
+
+... is mapped pragmatically to a header file as seen below from **[tps25751.h](https://github.com/TexasInstruments/usb-pd/blob/main/common/tps25751.h)**:
 
 ```c
-typedef union 
+/* Interrupt Event Register */
+typedef union
 {
-    uint32_t word;
-    struct __attribute__((packed)) 
+    uint8_t bytes[12];
+    struct __attribute__((packed))  
     {
-        uint16_t operationalCurrent : 10;
-        uint16_t operationalVoltage : 10;
-        uint16_t reserved1          : 5;
-        uint8_t  dualRoleData       : 1;
-        uint8_t  reserved2          : 2;
-        uint8_t  higherCapability   : 1;
-        uint8_t  dualRolePower      : 1;
-        uint8_t  supplyType         : 2;
+        uint8_t  numOfBytes         : 8;
+        uint8_t  reserved0          : 1;
+        uint8_t  pdHardReset        : 1;
+        uint8_t  reserved1          : 1;
+        uint8_t  plugInsertRemoval  : 1;
+        uint8_t  powerSwapComplete  : 1;
+        uint8_t  dataSwapComplete   : 1;
+        uint8_t  reserved2          : 1;
+        uint8_t  reserved3          : 1;
+        uint8_t  reserved4          : 1;
+        uint8_t  overcurrent        : 1;
+        uint8_t  reserved5          : 1;
+        uint8_t  reserved6          : 1;
+        uint8_t  newContractCons    : 1;
+        uint8_t  newContractProv    : 1;
+        uint8_t  sourceCapRec       : 1;
+        uint8_t  sinkCapRec         : 1;
+        uint8_t  reserved7          : 1;
+        uint8_t  powerSwapReq       : 1;
+        uint8_t  dataswapReq        : 1;
+        uint8_t  reserved8          : 1;
+        uint8_t  usbHostPresent     : 1;
+        uint8_t  usbHostNotPresent  : 1;
+        uint8_t  reserved9          : 1;
+        uint8_t  pwrPathSwChanged   : 1;
+        uint8_t  powerStatUpdate    : 1;
+        uint8_t  reserved10         : 1;
+        uint8_t  statusUpdate       : 1;
+        uint8_t  pdStatusUpdate     : 1;
+        uint8_t  reserved11         : 2;
+        uint8_t  cmd1Complete       : 1;
+        uint8_t  reserved12         : 1;
+        uint8_t  devIncompError     : 1;
+        uint8_t  cannotProvVolCur   : 1;
+        uint8_t  canProvVolCurLtr   : 1;
+        uint8_t  powerEvent         : 1;
+        uint8_t  missingGetCaps     : 1;
+        uint8_t  reserved13         : 1;
+        uint8_t  protocolError      : 1;
+        uint8_t  msgDataError       : 1;
+        uint8_t  reserved14         : 2;
+        uint8_t  sinkTransComplete  : 1;
+        uint8_t  plugEarlyNotf      : 1;
+        uint8_t  reserved15         : 2;
+        uint8_t  unableToSource     : 1;
+        uint16_t  reserved16        : 9;
+        uint8_t  extDCDCSinkSafe    : 1;
+        uint8_t  extDCDCSourceSafe  : 1;
+        uint8_t  reserved17         : 2;
+        uint8_t  liquidDetect       : 1;
+        uint8_t  reserved18         : 4;
+        uint8_t  txMemBuffEmpty     : 1;
+        uint8_t  mbrdBuffReady      : 1;
+        uint16_t  reserved19        : 13;
+        uint8_t  patchLoaded        : 1;
+        uint8_t  rdyForPatch        : 1;
+        uint8_t  i2cConNacked       : 1;
+        uint8_t  reserved20         : 5;
     } bits;
-} TI_USB_FIXED_PDO;
+} tIntEventRegister;
 ```
 
-The purpose of this header file is to allow for the programmer to choose if they access individual bits or the greater primitive type. This enables flexibility of changing/modifying one bit without the need to mask out the bits that are not being modified. Note that these structs are required to be "packed" via a preprocessor directive to ensure correct data alignment.
+Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events registers.
+
+## Portability Layer
+
+While the majority of examples in this repository were created to work with the [Texas Instruments MSPM0G3507](https://www.ti.com/product/MSPM0G3507)**, a portability layer exists to allow the code examples to be run on any microcontroller/processor system. This is done by abstracting out any specific hardware/RTOS calls to a small, lightweight "portability layer". The portability functions that need to be implemented to support new MCU architectures are documented in the [tps_usbpd_i2c_driver.h](./common/tps_usbpd_i2c_driver.h)** file.
 
 ## Licensing
 

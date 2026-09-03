@@ -23,11 +23,11 @@ The [TPS25751EVM](https://www.ti.com/tool/TPS25751EVM) is used in conjunction wi
 
 In this configuration, the red wire is I2C data (SDA), the green wire is I2C clock (SCL), the orange wire is I2C interrupt, and the yellow wire is ground (GND).  Also note that PB24 is used for I2C interrupts so the jumper J9 must be removed on the MSPM0 LaunchPad.
 
+Other hardware configurations and platforms are possible to use. Please refer to the [README.md](https://github.com/TexasInstruments/usb-pd) in the repository root for how to connect the TPS25751 to a different MCU platform.
+
 ## Build Instructions
 
 Please refer to the build instructions included in the root of the examples repository [README.md](https://github.com/TexasInstruments/usb-pd).
-
-This code example was built using the [MSP M0 SDK](https://www.ti.com/tool/MSPM0-SDK) **v2_06_00_05** and [Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) **v20.4.0.13**. This code example leverages TI-Drivers for UART logging and I2C communication as well as the FreeRTOS kernel included in the MSPM0 SDK.
 
 Note that the device configuration file that is used to setup the TPS25751EVM has been checked into this repository in the [config.json](https://github.com/TexasInstruments/usb-pd/blob/main/examples/tps25751/mspm0g3507/tps25751_dead_battery_clear/config.json) file. You can use this JSON file with the [USB Configuration Tool](https://dev.ti.com/gallery/view/USBPD/USBCPD_Application_Customization_Tool/) as described in the [TPS25751EVM's User's Guide](https://www.ti.com/lit/pdf/SLVUCP9).
 
@@ -41,48 +41,45 @@ This code example takes the register structures of the TPS25751's host interface
 
 ```c
 /* Boot Flags Register */
-typedef struct __attribute__((packed)) sBootFlagsRegister 
+typedef union 
 {
-    uint8_t  numOfBytes         : 8;
-    uint8_t  patchHeaderError   : 1;
-    uint8_t  reserved0          : 1;
-    uint8_t  deadBatteryFlag    : 1;
-    uint8_t  i2cEEPROMPresent   : 1;
-    uint8_t  region0            : 1;
-    uint8_t  region1            : 1;
-    uint8_t  region0Invalid     : 1;
-    uint8_t  region1Invalid     : 1;
-    uint8_t  region0EEPROMError : 1;
-    uint8_t  region1EEPROMError : 1;
-    uint8_t  patchDownloadError : 1;
-    uint8_t  reserved1          : 1;
-    uint8_t  region0CRCFail     : 1;
-    uint8_t  region1CRCFail     : 1;
-    uint8_t  reserved2          : 5;
-    uint8_t  systemTSD          : 1;
-    uint16_t  reserved3         : 9;
-    uint8_t  patchConfigSource  : 3;
-    uint8_t  revisionID         : 8;
+    uint8_t bytes[6];
+    struct __attribute__((packed))
+    {
+        uint8_t  numOfBytes         : 8;
+        uint8_t  patchHeaderError   : 1;
+        uint8_t  reserved0          : 1;
+        uint8_t  deadBatteryFlag    : 1;
+        uint8_t  i2cEEPROMPresent   : 1;
+        uint8_t  region0            : 1;
+        uint8_t  region1            : 1;
+        uint8_t  region0Invalid     : 1;
+        uint8_t  region1Invalid     : 1;
+        uint8_t  region0EEPROMError : 1;
+        uint8_t  region1EEPROMError : 1;
+        uint8_t  patchDownloadError : 1;
+        uint8_t  reserved1          : 1;
+        uint8_t  region0CRCFail     : 1;
+        uint8_t  region1CRCFail     : 1;
+        uint8_t  reserved2          : 5;
+        uint8_t  systemTSD          : 1;
+        uint16_t  reserved3         : 9;
+        uint8_t  patchConfigSource  : 3;
+        uint8_t  revisionID         : 8;
+    } bits;
 } tBootFlagsRegister;
 ```
 
-Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events register and boot flags register. In this code example, we setup the MSPM0 to listen for a falling edge interrupt on the I2C IRQ line. When in this state, plug in the USB cable to port ***J3*** on the TPS25751 making sure that the TPS25751 does not have any other power provided to it. Once plugged in, an interrupt occurs on the I2C IRQ line (that pends a semaphore) and the device attempts to read the ***Interrupt Event for I2C1 (0x14)***:
+Using these header files, this code example keeps a "shadow" copy of the device's configuration in RAM and shows how to keep track of the device's interrupt events register and boot flags register. In this code example, we setup the MSPM0 to listen for a falling edge interrupt on the I2C IRQ line. When in this state, plug in the USB cable to port ***J3*** on the TPS25751 making sure that the TPS25751 does not have any other power provided to it. Once plugged in, an interrupt occurs on the I2C IRQ line and the device attempts to read the ***Interrupt Event for I2C1 (0x14)***:
 
 ```c
     /* Waiting for the interrupt event */
-    Display_printf(display, 0, 0, "Waiting for I2C interrupt...");
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    TPS_USBPD_pendOnIRQ(UINT32_MAX);
 
     /* Setting up the read transaction to the event register */
     addrReg = TPS25751_INT_EVENT_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &curEventRegister.bytes;
-    i2cTransaction.readCount  = sizeof(tIntEventRegister);
-
-    if (I2C_transfer(i2c, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curEventRegister.bytes, sizeof(tIntEventRegister)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
         goto DEAD_BATTERY_TASK_START;
     }
 ```
@@ -93,47 +90,40 @@ Next, the code example will ensure that the ***Plug Insert or Removal*** bit is 
 
 ```c
     /* Seeing if there was a plug event  */
-    if(curEventRegister.plugInsertRemoval == 1)
+    if(curEventRegister.bits.plugInsertRemoval == 1)
     {
-        Display_printf(display, 0, 0, "Plug event detected! Clearing flag.");
+        TPS_USBPD_logMessage("Plug event detected! Clearing flag...");
 
         /* If there is a plug event, clear the plug event flag */
         curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
-        memcpy(&curWriteCommand.registerData, &curEventRegister.bytes, sizeof(tIntEventRegister));
-        i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-        i2cTransaction.readCount = 0;
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        memcpy(&curWriteCommand.registerData, &curEventRegister, sizeof(tIntEventRegister));
+        if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
         {
-            Display_printf(display, 0, 0, "Error clearing interrupt event registers!");
+            TPS_USBPD_logMessage("Error clearing interrupt event registers!");
             goto DEAD_BATTERY_TASK_START;
         }
-        curEventRegister.plugInsertRemoval = 0;
+
+        curEventRegister.bits.plugInsertRemoval = 0;
 ```
 
-Next, as a plug event has occured and it has been established that we have a valid I2C target connection, we issue a read to the ***Boot Flags register (0x2D)*** and check to see if the ***Dead Battery Flag*** has been set:
+Next, as a plug event has occurred and it has been established that we have a valid I2C target connection, we issue a read to the ***Boot Flags register (0x2D)*** and check to see if the ***Dead Battery Flag*** has been set:
 
 ```c
-        Display_printf(display, 0, 0, "Reading boot flags register...");
+        TPS_USBPD_logMessage("Reading boot flags register...");
         addrReg = TPS25751_BOOT_FLAGS_REG;
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &curBootFlagRegister;
-        i2cTransaction.readCount  = sizeof(tBootFlagsRegister);
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curBootFlagRegister, sizeof(tBootFlagsRegister)) == false)
         {
-            Display_printf(display, 0, 0, "Error reading boot flag registers!");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto DEAD_BATTERY_TASK_START;
         }
 
-        if(curBootFlagRegister.deadBatteryFlag == 1)
+        if(curBootFlagRegister.bits.deadBatteryFlag == 1)
         {
-            Display_printf(display, 0, 0, "Dead battery flag detected!");
+            TPS_USBPD_logMessage("Dead battery flag detected!");
         }
         else
         {
-            Display_printf(display, 0, 0, "Dead battery flag not detected!");
+            TPS_USBPD_logMessage("Dead battery flag not detected!");
             goto DEAD_BATTERY_TASK_START;
         }
 ```
@@ -153,15 +143,10 @@ The 4CC command is sent with the standard I2C transfer command:
 
 ```c
         /* Issuing DBfg command */
-        Display_printf(display, 0, 0, "Issuing DBfg 4CC command");
-
-        i2cTransaction.writeBuf = (void*)&deadBatteryClearCommand;
-        i2cTransaction.writeCount = sizeof(t4CCCommand);
-        i2cTransaction.readCount  = 0;
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        TPS_USBPD_logMessage("Issuing DBfg 4CC command");
+        if(TPS_USBPD_i2cTransfer((void*)&deadBatteryClearCommand, sizeof(t4CCCommand), NULL, 0) == false)
         {
-            Display_printf(display, 0, 0, "Error issuing 4CC command\n");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto DEAD_BATTERY_TASK_START;
         }
 ```
@@ -171,24 +156,23 @@ After the 4CC command is sent, a small delay is incurred and the boot flags regi
 ```c
         /* Otherwise, sleep for a bit and read back the boot register to confirm dead battery
             flag was cleared */
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        TPS_USBPD_delayMS(50);
         addrReg = TPS25751_BOOT_FLAGS_REG;
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &curBootFlagRegister;
-        i2cTransaction.readCount  = sizeof(tBootFlagsRegister);
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curBootFlagRegister, sizeof(tBootFlagsRegister)) == false)
         {
-            Display_printf(display, 0, 0, "Error reading boot flag registers!");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto DEAD_BATTERY_TASK_START;
         }
 
-        if(curBootFlagRegister.deadBatteryFlag == 0)
+        if(curBootFlagRegister.bits.deadBatteryFlag == 0)
         {
             /* Set a breakpoint here to demonstrate functionality. */
-            Display_printf(display, 0, 0, "Dead battery flag cleared successfully!");
-            __NOP();
+            TPS_USBPD_logMessage("Dead battery flag cleared successfully!");
+        }
+        else
+        {
+            TPS_USBPD_logMessage("Dead battery flag not cleared!");
+            goto DEAD_BATTERY_TASK_START;
         }
 ```
 

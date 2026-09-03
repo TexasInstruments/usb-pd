@@ -34,27 +34,12 @@
 #include <unistd.h>
 #include <string.h>
 
-/* Driver Header files */
-#include <ti/display/DisplayUart.h>
-#include <ti/drivers/GPIO.h>
-#include <ti/drivers/I2C.h>
-
-/* Driver configuration */
-#include "ti_drivers_config.h"
-#include <FreeRTOS.h>
-#include <semphr.h>
-
 /* USB Configuration */
 #include "tps25751.h"
+#include "tps_usbpd_i2c_driver.h"
 
 /* Functions/Structures for driver development */
-static Display_Handle display;
-SemaphoreHandle_t xSemaphore;
-void interruptEventCallback(uint_least8_t index);
-static void drainSemaphoreObject(SemaphoreHandle_t xSemaphore);
-static void printInterruptStatus(tIntEventRegister* intEvent, Display_Handle display);
-
- #define TPS25751_I2C_TARGET_ADDR     0x21
+static void printInterruptStatus(tIntEventRegister* intEvent);
 
 /* USB Structures */
 
@@ -68,172 +53,104 @@ static tTPS25751WriteCommand curWriteCommand;
  */
 void *mainThread(void *arg0)
 {
-    I2C_Handle i2c;
-    I2C_Params i2cParams;
-    I2C_Transaction i2cTransaction;
     uint8_t addrReg;
     uint8_t sizeWritten;
     uint32_t ii;
     tModeRegister modeReg;
 
-    /* Call driver init functions and create RTOS objects */
-    Display_init();
-    I2C_init();
-    GPIO_init();
-    xSemaphore = xSemaphoreCreateCounting(1,0);
+    /* Create RTOS objects and initializing device */
+    TPS_USBPD_initializeDevice();
 
-    /* Configuring the GPIO input interrupt */
-    GPIO_setConfig(CONFIG_GPIO_PD_IRQ, GPIO_CFG_IN_PU | GPIO_CFG_IN_INT_FALLING | CONFIG_GPIO_PD_IRQ_IOMUX);
-    GPIO_setCallback(CONFIG_GPIO_PD_IRQ, interruptEventCallback);
-    GPIO_enableInt(CONFIG_GPIO_PD_IRQ);
-
-    /* Making sure interrupt is not pended */
-    drainSemaphoreObject(xSemaphore);
-
-     /* Open the UART display for output */
-    display = Display_open(Display_Type_UART, NULL);
-    if (display == NULL)
-    {
-        while (1)
-        {
-        }
-    }
-
-    Display_printf(display, 0, 0, "\n--- TPS25751A Interrupt Monitor ---");
-
-    /* Create I2C for usage */
-    I2C_Params_init(&i2cParams);
-    i2cParams.bitRate = I2C_100kHz;
-    i2c = I2C_open(CONFIG_I2C_TMP, &i2cParams);
-    if (i2c == NULL)
-    {
-        Display_printf(display, 0, 0, "Error Initializing I2C!");
-        while (1)
-        {
-        }
-    }
-    else
-    {
-        Display_printf(display, 0, 0, "I2C Initialized!");
-    }
-
-    /* Setting the peripheral address */
-    i2cTransaction.targetAddress = TPS25751_I2C_TARGET_ADDR;
+    TPS_USBPD_logMessage("\n--- TPS25751A Interrupt Monitor ---");
 
     /* Waiting for the device to be in APP mode  */
     modeReg.mode = 0;
     addrReg = TPS25751_MODE_REG;
-    Display_printf(display, 0, 0, "Waiting for device to be in APP mode...");
+
+    TPS_USBPD_logMessage("Waiting for device to be in APP mode...");
+
     while (modeReg.mode != TPS25751_MODE_APP)
     {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &modeReg;
-        i2cTransaction.readCount  = sizeof(tModeRegister);
-
-        I2C_transfer(i2c, &i2cTransaction);
+        TPS_USBPD_delayMS(10);
+        TPS_USBPD_i2cTransfer(&addrReg, 1, &modeReg, sizeof(tModeRegister));
     }
+
+    TPS_USBPD_logMessage("    device booted into APP mode!");
 
     do
     {
         /* Reading out interrupt */
         addrReg = TPS25751_INT_EVENT_REG;
-        i2cTransaction.writeBuf = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readCount = sizeof(tIntEventRegister);
-        i2cTransaction.readBuf = &curTriggeredIntsReg;
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&addrReg, 1,
+                                &curTriggeredIntsReg,
+                                sizeof(tIntEventRegister)) == false)
         {
-            /* In this case we NAKed. Normally we would fault out here, but it is possible 
-                that the device just isn't powered up so let's delay for 100ms and then
-                try again */
-            vTaskDelay(100 / portTICK_PERIOD_MS);
+            TPS_USBPD_delayMS(100);
             continue;
         }
 
         /* Clearing the interrupts */
-        memcpy(&curWriteCommand.registerData, &curTriggeredIntsReg.bytes, sizeof(tIntEventRegister));
+        memcpy(&curWriteCommand.registerData, &curTriggeredIntsReg.bytes,
+                 sizeof(tIntEventRegister));
         curWriteCommand.writeAddr = TPS25751_INT_EVENT_CLR_REG;
-        i2cTransaction.writeBuf = &curWriteCommand;
-        i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-        i2cTransaction.readCount = 0;
-
-        if (I2C_transfer(i2c, &i2cTransaction) == false)
+        if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1,
+                                NULL, 0) == false)
         {
-            Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+            TPS_USBPD_logMessage("USB-PD not responding (NAK)");
             goto TPS25751ErrorClosure;
         }
 
         /* Dumping the relevant information to the terminal */
-        printInterruptStatus(&curTriggeredIntsReg, display);
+        printInterruptStatus(&curTriggeredIntsReg);
 
-        Display_printf(display, 0, 0, "\nPending on I2Ct_IRQ...");
-        xSemaphoreTake(xSemaphore, portMAX_DELAY);
+        TPS_USBPD_logMessage("\nPending on I2Ct_IRQ...");
+        TPS_USBPD_pendOnIRQ(UINT32_MAX);
 
-    } while(1);
-    
-    Display_printf(display, 0, 0, "\nPending on I2Ct_IRQ...");
-
+    } while(1);  
     
 TPS25751ErrorClosure:
-    I2C_close(i2c);
-    Display_printf(display, 0, 0, "I2C closed!");
+    TPS_USBPD_closeDevice();
     return (NULL);
 }
 
-static void printInterruptStatus(tIntEventRegister* intEvent, Display_Handle display)
+static void printInterruptStatus(tIntEventRegister* intEvent)
 {
-    Display_printf(display, 0, 0, "--- INT_EVENT ---");
-    Display_printf(display, 0, 0, "   pdHardReset = %x", intEvent->bits.pdHardReset);
-    Display_printf(display, 0, 0, "   plugInsertRemoval = %x", intEvent->bits.plugInsertRemoval);
-    Display_printf(display, 0, 0, "   powerSwapComplete = %x", intEvent->bits.powerSwapComplete);
-    Display_printf(display, 0, 0, "   dataSwapComplete = %x", intEvent->bits.dataSwapComplete);
-    Display_printf(display, 0, 0, "   overcurrent = %x", intEvent->bits.overcurrent);
-    Display_printf(display, 0, 0, "   newContractCons = %x", intEvent->bits.newContractCons);
-    Display_printf(display, 0, 0, "   newContractProv = %x", intEvent->bits.newContractProv);
-    Display_printf(display, 0, 0, "   sourceCapRec = %x", intEvent->bits.sourceCapRec);
-    Display_printf(display, 0, 0, "   sinkCapRec = %x", intEvent->bits.sinkCapRec);
-    Display_printf(display, 0, 0, "   powerSwapReq = %x", intEvent->bits.powerSwapReq);
-    Display_printf(display, 0, 0, "   dataswapReq = %x", intEvent->bits.dataswapReq);
-    Display_printf(display, 0, 0, "   usbHostPresent = %x", intEvent->bits.usbHostPresent);
-    Display_printf(display, 0, 0, "   usbHostNotPresent = %x", intEvent->bits.usbHostNotPresent);
-    Display_printf(display, 0, 0, "   pwrPathSwChanged = %x", intEvent->bits.pwrPathSwChanged);
-    Display_printf(display, 0, 0, "   powerStatUpdate = %x", intEvent->bits.powerStatUpdate);
-    Display_printf(display, 0, 0, "   statusUpdate = %x", intEvent->bits.statusUpdate);
-    Display_printf(display, 0, 0, "   pdStatusUpdate = %x", intEvent->bits.pdStatusUpdate);
-    Display_printf(display, 0, 0, "   cmd1Complete = %x", intEvent->bits.pdStatusUpdate);
-    Display_printf(display, 0, 0, "   devIncompError = %x", intEvent->bits.devIncompError);
-    Display_printf(display, 0, 0, "   cannotProvVolCur = %x", intEvent->bits.cannotProvVolCur);
-    Display_printf(display, 0, 0, "   canProvVolCurLtr = %x", intEvent->bits.canProvVolCurLtr);
-    Display_printf(display, 0, 0, "   powerEvent = %x", intEvent->bits.powerEvent);
-    Display_printf(display, 0, 0, "   missingGetCaps = %x", intEvent->bits.missingGetCaps);
-    Display_printf(display, 0, 0, "   protocolError = %x", intEvent->bits.protocolError);
-    Display_printf(display, 0, 0, "   msgDataError = %x", intEvent->bits.msgDataError);
-    Display_printf(display, 0, 0, "   sinkTransComplete = %x", intEvent->bits.sinkTransComplete);
-    Display_printf(display, 0, 0, "   plugEarlyNotf = %x", intEvent->bits.plugEarlyNotf);
-    Display_printf(display, 0, 0, "   unableToSource = %x", intEvent->bits.unableToSource);
-    Display_printf(display, 0, 0, "   extDCDCSinkSafe = %x", intEvent->bits.extDCDCSinkSafe);
-    Display_printf(display, 0, 0, "   extDCDCSourceSafe = %x", intEvent->bits.extDCDCSourceSafe);
-    Display_printf(display, 0, 0, "   liquidDetect = %x", intEvent->bits.liquidDetect);
-    Display_printf(display, 0, 0, "   txMemBuffEmpty = %x", intEvent->bits.txMemBuffEmpty);
-    Display_printf(display, 0, 0, "   mbrdBuffReady = %x", intEvent->bits.mbrdBuffReady);
-    Display_printf(display, 0, 0, "   patchLoaded = %x", intEvent->bits.patchLoaded);
-    Display_printf(display, 0, 0, "   rdyForPatch = %x", intEvent->bits.rdyForPatch);
-    Display_printf(display, 0, 0, "   i2cConNacked = %x", intEvent->bits.i2cConNacked);
+    TPS_USBPD_logMessage("--- INT_EVENT ---");
+    TPS_USBPD_logMessage("   pdHardReset = %x", intEvent->bits.pdHardReset);
+    TPS_USBPD_logMessage("   plugInsertRemoval = %x", intEvent->bits.plugInsertRemoval);
+    TPS_USBPD_logMessage("   powerSwapComplete = %x", intEvent->bits.powerSwapComplete);
+    TPS_USBPD_logMessage("   dataSwapComplete = %x", intEvent->bits.dataSwapComplete);
+    TPS_USBPD_logMessage("   overcurrent = %x", intEvent->bits.overcurrent);
+    TPS_USBPD_logMessage("   newContractCons = %x", intEvent->bits.newContractCons);
+    TPS_USBPD_logMessage("   newContractProv = %x", intEvent->bits.newContractProv);
+    TPS_USBPD_logMessage("   sourceCapRec = %x", intEvent->bits.sourceCapRec);
+    TPS_USBPD_logMessage("   sinkCapRec = %x", intEvent->bits.sinkCapRec);
+    TPS_USBPD_logMessage("   powerSwapReq = %x", intEvent->bits.powerSwapReq);
+    TPS_USBPD_logMessage("   dataswapReq = %x", intEvent->bits.dataswapReq);
+    TPS_USBPD_logMessage("   usbHostPresent = %x", intEvent->bits.usbHostPresent);
+    TPS_USBPD_logMessage("   usbHostNotPresent = %x", intEvent->bits.usbHostNotPresent);
+    TPS_USBPD_logMessage("   pwrPathSwChanged = %x", intEvent->bits.pwrPathSwChanged);
+    TPS_USBPD_logMessage("   powerStatUpdate = %x", intEvent->bits.powerStatUpdate);
+    TPS_USBPD_logMessage("   statusUpdate = %x", intEvent->bits.statusUpdate);
+    TPS_USBPD_logMessage("   pdStatusUpdate = %x", intEvent->bits.pdStatusUpdate);
+    TPS_USBPD_logMessage("   cmd1Complete = %x", intEvent->bits.pdStatusUpdate);
+    TPS_USBPD_logMessage("   devIncompError = %x", intEvent->bits.devIncompError);
+    TPS_USBPD_logMessage("   cannotProvVolCur = %x", intEvent->bits.cannotProvVolCur);
+    TPS_USBPD_logMessage("   canProvVolCurLtr = %x", intEvent->bits.canProvVolCurLtr);
+    TPS_USBPD_logMessage("   powerEvent = %x", intEvent->bits.powerEvent);
+    TPS_USBPD_logMessage("   missingGetCaps = %x", intEvent->bits.missingGetCaps);
+    TPS_USBPD_logMessage("   protocolError = %x", intEvent->bits.protocolError);
+    TPS_USBPD_logMessage("   msgDataError = %x", intEvent->bits.msgDataError);
+    TPS_USBPD_logMessage("   sinkTransComplete = %x", intEvent->bits.sinkTransComplete);
+    TPS_USBPD_logMessage("   plugEarlyNotf = %x", intEvent->bits.plugEarlyNotf);
+    TPS_USBPD_logMessage("   unableToSource = %x", intEvent->bits.unableToSource);
+    TPS_USBPD_logMessage("   extDCDCSinkSafe = %x", intEvent->bits.extDCDCSinkSafe);
+    TPS_USBPD_logMessage("   extDCDCSourceSafe = %x", intEvent->bits.extDCDCSourceSafe);
+    TPS_USBPD_logMessage("   liquidDetect = %x", intEvent->bits.liquidDetect);
+    TPS_USBPD_logMessage("   txMemBuffEmpty = %x", intEvent->bits.txMemBuffEmpty);
+    TPS_USBPD_logMessage("   mbrdBuffReady = %x", intEvent->bits.mbrdBuffReady);
+    TPS_USBPD_logMessage("   patchLoaded = %x", intEvent->bits.patchLoaded);
+    TPS_USBPD_logMessage("   rdyForPatch = %x", intEvent->bits.rdyForPatch);
+    TPS_USBPD_logMessage("   i2cConNacked = %x", intEvent->bits.i2cConNacked);
 }
 
-void interruptEventCallback(uint_least8_t index)
-{
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
-}
-
-static void drainSemaphoreObject(SemaphoreHandle_t xSemaphore)
-{
-    while(xSemaphoreTake(xSemaphore, 0) == pdTRUE)
-    {
-        // Keep taking until no more tokens are available
-    }
-}

@@ -34,11 +34,11 @@ In this configuration, the following connections are made:
 
 - I2Ct_IRQ of the TPS25751A is connected to PB24 of the LP-MSPM0G3507
 
+Other hardware configurations and platforms are possible to use. Please refer to the [README.md](https://github.com/TexasInstruments/usb-pd) in the repository root for how to connect the TPS25751A to a different MCU platform.
+
 ## Build Instructions
 
 Please refer to the build instructions included in the root of the examples repository [README.md](https://github.com/TexasInstruments/usb-pd).
-
-This code example was built using the [MSP M0 SDK](https://www.ti.com/tool/MSPM0-SDK) **v2_06_00_05** and [Code Composer Studio](https://www.ti.com/tool/CCSTUDIO) **v20.4.0.13**. This code example leverages TI-Drivers for UART logging and I2C communication as well as the FreeRTOS kernel included in the MSPM0 SDK.
 
 ## Usage
 
@@ -48,21 +48,18 @@ The configuration file above is a default configuration file with the default in
 
 ```c
     /* Setting interrupt mask to enable CMD1  */
-    Display_printf(display, 0, 0, "Enabling CMD1 interrupts...");
+    TPS_USBPD_logMessage("Enabling CMD1 interrupts...");
     curEventRegister.bits.cmd1Complete = 1;
     curWriteCommand.writeAddr = TPS25751_INT_EVENT_MASK_REG;
     memcpy(&curWriteCommand.registerData, &curEventRegister.bytes, sizeof(tIntEventRegister));
-    i2cTransaction.writeCount = sizeof(tIntEventRegister) + 1;
-    i2cTransaction.writeBuf = &curWriteCommand;
-    i2cTransaction.readCount = 0;
 
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tIntEventRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Enabled!");
+    TPS_USBPD_logMessage("    Enabled!");
 
 ```
 
@@ -151,20 +148,18 @@ In this code example, we setup the MSPM0 to listen for a falling edge interrupt 
 ```c
 PendOnCMD1Int:
    /* Pending on CMD1 Completion interrupt*/
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    TPS_USBPD_pendOnIRQ(UINT32_MAX);
 
+    /* Reading the currently triggered interrupts and clearing them */
+    addrReg = TPS25751_INT_EVENT_REG;
+    if(TPS_USBPD_i2cTransfer((void*)&addrReg, 1, &curTriggeredIntsReg, sizeof(tIntEventRegister)) == false)
+    {
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
+        return (false);
+    }
 ```
 
-The interrupt handler for the interrupt GPIO can be seen below:
-
-```c
-void interruptEventCallback(uint_least8_t index)
-{
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
-}
-```
-
-A convenience function (**pendOnCMD1Interrupt**) is added in the code example that pends the semaphore, reads/clears the currently pended interrupt, and only returns when a **CMD1 Complete** interrupt is pended. 
+The **TPS_USBPD_pendOnIRQ** function calls a function in the portability layer that abstracts out specific MCU/RTOS implementation, however this function will essentially pend/sleep for a falling edge on the I2Ct_IRQ line and only return when the function times out or when the interrupt is detected.
 
 After booting up, the device periodically reads the MODE register and waits for it to return that the device is in APP mode:
 
@@ -172,40 +167,29 @@ After booting up, the device periodically reads the MODE register and waits for 
     /* Waiting for the device to be booted  */
     modeReg.mode = 0;
     addrReg = TPS25751_MODE_REG;
-    Display_printf(display, 0, 0, "Waiting for device to boot...");
-    while (modeReg.mode != TPS25751_MODE_APP)
+    TPS_USBPD_logMessage("Waiting for device to boot...");
+    while ((modeReg.mode != TPS25751_MODE_APP))
     {
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        i2cTransaction.writeBuf   = &addrReg;
-        i2cTransaction.writeCount = 1;
-        i2cTransaction.readBuf    = &modeReg;
-        i2cTransaction.readCount  = sizeof(tModeRegister);
-
-        I2C_transfer(i2cHandle, &i2cTransaction);
+        TPS_USBPD_delayMS(10);
+        TPS_USBPD_i2cTransfer(&addrReg, 1, &modeReg, sizeof(tModeRegister));
     }
-    
-    Display_printf(display, 0, 0, "    Device is booted!");
+
+    TPS_USBPD_logMessage("    Device is booted!");
 ```
 
 The EEPROM must be updated in APP mode so we want to ensure the device is booted in a known mode before initiating the update process. Initially, the MSPM0 will read the BOOT FLAGS register (0x2D) register of the TPS25751A and check the **Region 0 Invalid** and **Region 0 EEPROM Error** fields:
 
 ```c
     /* Reading the boot flags register */
-    Display_printf(display, 0, 0, "Reading boot flags register...");
+    TPS_USBPD_logMessage("Reading boot flags register...");
     addrReg = TPS25751_BOOT_FLAGS_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &curBootFlagsReg;
-    i2cTransaction.readCount  = sizeof(tBootFlagsRegister);
-
-    if(I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &curBootFlagsReg, sizeof(tBootFlagsRegister)) == false)
     {
-        Display_printf(display, 0, 0, "    NAK on boot flags read!");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Read!");
+    TPS_USBPD_logMessage("    Read!");
 
     /* Setting the appropriate pointer variables to write depending on if region 0 is
         valid or not */
@@ -215,7 +199,7 @@ The EEPROM must be updated in APP mode so we want to ensure the device is booted
         newRegStart = 0x0800;
         oldRegPointer = 0;
         oldRegStart = 0x4400;
-        Display_printf(display, 0, 0, "    EEPROM region set to region 0.");
+        TPS_USBPD_logMessage("    EEPROM region set to region 0.");
     }
     else
     {
@@ -223,7 +207,7 @@ The EEPROM must be updated in APP mode so we want to ensure the device is booted
         newRegStart = 0x4400;
         oldRegPointer = 0x0400;
         oldRegStart = 0x800;
-        Display_printf(display, 0, 0, "    EEPROM region set to region 1.");
+        TPS_USBPD_logMessage("    EEPROM region set to region 1.");
     }
 ```
 
@@ -242,6 +226,8 @@ After the correct region pointers are decided, the appropriate pointers are upda
     {
         goto TPS25751ErrorClosure;
     }
+
+    TPS_USBPD_logMessage("    Written!");
 ```
 
 The **writeEEPROMData** function has the following prototype:
@@ -269,8 +255,8 @@ This C file was imported into the Code Composer project into the [lbr.c](https:/
 
 ```c
     /* Carving new data up into 32 byte chunks and writing them via FLwd */
-    Display_printf(display, 0, 0, "Carving up data and sending data...");
-    Display_printf(display, 0, 0, "    starting at address 0x%x",newRegStart);
+    TPS_USBPD_logMessage("Carving up data and sending data...");
+    TPS_USBPD_logMessage("    starting at address 0x%x",newRegStart);
         
     for(ii=0;ii<gSizeLowRegionArray;ii+=TPS25751_EEPROM_SEG_SIZE)
     {
@@ -284,45 +270,61 @@ This C file was imported into the Code Composer project into the [lbr.c](https:/
         }
     }
 
-    Display_printf(display, 0, 0, "    All bytes transferred!");
+    TPS_USBPD_logMessage("    All bytes transferred!");
 ```
 
 Note that the FLrd verification is skipped in this piece of code as immediately after the write is complete the **FLvy** command is issued to ensure that the programming happened successfully:
 
 ```c
-    /* Writing the DATA1 registers for FLvy */
-    i2cTransaction.writeBuf   = &curWriteCommand;
-    i2cTransaction.writeCount = sizeof(tFLvyDataRegister) + 1;
-    i2cTransaction.readCount  = 0;
+    /* Executing FLvy to verify */
+    TPS_USBPD_logMessage("Sending FLvy command...");
+
+    /* Setting the verify address */
+    curFlVYData.bits.verifyAddr = newRegStart;
+    memcpy(&curWriteCommand.registerData, &curFlVYData.bytes, sizeof(tFLvyDataRegister));
+    curWriteCommand.writeAddr = TPS25751_CMD1_DATA_REG;
     
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    /* Writing the DATA1 registers for FLvy and issuing command */
+    if(TPS_USBPD_i2cTransfer(&curWriteCommand, sizeof(tFLvyDataRegister) + 1, NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
-        return (false);
+        TPS_USBPD_logMessage("    Error issuing FLvy command\n");
+        goto TPS25751ErrorClosure;
     }
 
-    i2cTransaction.writeBuf = (void*)&flvy4CCCommand;
-    i2cTransaction.writeCount = sizeof(t4CCCommand);
-    i2cTransaction.readCount  = 0;
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&flvy4CCCommand, sizeof(t4CCCommand), NULL, 0) == false)
     {
-        Display_printf(display, 0, 0, "    Error issuing FLvy command\n");
+        TPS_USBPD_logMessage("    Error issuing FLvy command\n");
         goto TPS25751ErrorClosure;
     }
 
     if(pendOnCMD1Interrupt() == false)
     {
-        Display_printf(display, 0, 0, "    Error waiting for CMD1 interrupt!\n");
+        TPS_USBPD_logMessage("    Error waiting for CMD1 interrupt!\n");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Command issued!");
+    TPS_USBPD_logMessage("    Command issued!");
+
+    /* Reading back the data and making sure verify actually passed  */
+    addrReg = TPS25751_CMD1_DATA_REG;
+    if(TPS_USBPD_i2cTransfer(&addrReg, 1, &flvyResp, sizeof(tFLvyResponse)) == false)
+    {
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
+        goto TPS25751ErrorClosure;
+    }
+
+    if(flvyResp.bits.returnCode != 0)
+    {
+        TPS_USBPD_logMessage("    FLvy failed (0x%x)", flvyResp.bits.returnCode);
+        goto TPS25751ErrorClosure;
+    }
+
+    TPS_USBPD_logMessage("    FLvy passed!");
 ```
 
 After the image has been verified, the pointers are updated in the EEPROM headers to point to the correct images:
 ```c
-    Display_printf(display, 0, 0, "Writing pointer at 0x%x to 0x%x...",newRegPointer, newRegStart);
+    TPS_USBPD_logMessage("Writing pointer at 0x%x to 0x%x...",newRegPointer, newRegStart);
 
     /* Writing the New Region Pointer */
     if(writeEEPROMData((uint8_t*)&newRegStart, newRegPointer,
@@ -331,9 +333,9 @@ After the image has been verified, the pointers are updated in the EEPROM header
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Written!");
+    TPS_USBPD_logMessage("    Written!");
 
-    Display_printf(display, 0, 0, "Writing pointer at 0x%x to 0x%x...",oldRegPointer, zeroedPointer);
+    TPS_USBPD_logMessage("Writing pointer at 0x%x to 0x%x...",oldRegPointer, zeroedPointer);
 
     /* Writing the Old Region Pointer */
     if(writeEEPROMData((uint8_t*)&zeroedPointer, oldRegPointer,
@@ -342,38 +344,33 @@ After the image has been verified, the pointers are updated in the EEPROM header
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Written!");
+    TPS_USBPD_logMessage("    Written!");
 ```
 
 Next, a GAID command is sent to the TPS25751A to cold reset the device and boot from the new image. After sleeping for five seconds to allow for the device to reboot and for the EEPROM configuration to load, the device reads the customer use registers to ensure that the new values were programmed:
 
 After the image has been verified, the pointers are updated in the EEPROM headers to point to the correct images:
 ```c
-   /* Checking customer use register to make sure we have the updated firmware */
-    Display_printf(display, 0, 0, "Reading customer user register...");
+    /* Checking customer use register to make sure we have the updated firmware */
+    TPS_USBPD_logMessage("Reading customer user register...");
     addrReg = TPS25751_CUST_USE_REG;
-    i2cTransaction.writeBuf   = &addrReg;
-    i2cTransaction.writeCount = 1;
-    i2cTransaction.readBuf    = &custReg;
-    i2cTransaction.readCount  = sizeof(tCustomerUseRegister);
-
-    if (I2C_transfer(i2cHandle, &i2cTransaction) == false)
+    if(TPS_USBPD_i2cTransfer((void*)&addrReg, 1, &custReg, sizeof(tCustomerUseRegister)) == false)
     {
-        Display_printf(display, 0, 0, "USB-PD not responding (NAK)");
+        TPS_USBPD_logMessage("USB-PD not responding (NAK)");
         goto TPS25751ErrorClosure;
     }
 
-    Display_printf(display, 0, 0, "    Read!");
+    TPS_USBPD_logMessage("    Read!");
 
     if((custReg.custRegWord1 != 0xCAFEBEEF) || (custReg.custRegWord2 != 0xDEADBEEF))
     {
-        Display_printf(display, 0, 0, "ERROR! Customer user registers did not match!");
+        TPS_USBPD_logMessage("ERROR! Customer user registers did not match!");
         goto TPS25751ErrorClosure;
     }
     else
     {
-        Display_printf(display, 0, 0, "Customer use registers matched!");
-        Display_printf(display, 0, 0, "Device flashed successfully!");
+        TPS_USBPD_logMessage("Customer use registers matched!");
+        TPS_USBPD_logMessage("Device flashed successfully!");
     }
 ```
 
