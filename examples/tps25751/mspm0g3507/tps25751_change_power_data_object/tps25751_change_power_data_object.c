@@ -84,7 +84,11 @@ SYSTEM_POWER_ON:
 
 WAIT_FOR_USBPD_CONTRACT:
     /* Only wait for IRQ if not already asserted. If IRQ is asserted, keep executing */
-    TPS_USBPD_pendOnIRQ(UINT32_MAX);
+    if ( TPS_USBPD_IRQ_read() )
+    {
+        TPS_USBPD_pendOnIRQ(UINT32_MAX);
+    }
+    
 
     /* Setting up the read transaction to the event register */
     addrReg = TPS25751_INT_EVENT_REG;
