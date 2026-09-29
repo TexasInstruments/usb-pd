@@ -26,6 +26,7 @@
             -D__MSPM0G3507__
             -O2
             -I${PROJECT_ROOT}/inc/
+            -I${PROJECT_ROOT}/common/
             -I${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/third_party/CMSIS/Core/Include
             -I${COM_TI_MSPM0_SDK_INSTALL_DIR}/kernel/freertos/Source/include
             -I${COM_TI_MSPM0_SDK_INSTALL_DIR}/source
