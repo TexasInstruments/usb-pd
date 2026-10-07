@@ -138,6 +138,18 @@ extern void TPS_USBPD_delayMS(uint32_t delayInMS);
  */
 extern bool TPS_USBPD_pendOnIRQ(uint32_t timeoutValue);
 
+/**
+ *  @brief Read the value of the I2Ct_IRQ line
+ *
+ *  Function that will read the I2Ct_IRQ pin and
+ *  from the microcontroller. This can be used for 
+ *  polling I2Ct_IRQ without requiring semaphore
+ *
+ *  @retval value of the I2Ct_IRQ 1 if high, 0 if low
+ *
+ */
+extern bool TPS_USBPD_IRQ_read();
+
 /* Device Specific Variables */
 #define TPS_USBPD_I2C_DEFAULT_TARGET_ADDR     0x21
 

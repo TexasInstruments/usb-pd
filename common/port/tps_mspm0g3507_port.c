@@ -91,6 +91,11 @@ void TPS_USBPD_logMessage(const char *format, ...)
     va_end(args);
 }
 
+bool TPS_USBPD_IRQ_read()
+{
+    return GPIO_read(CONFIG_GPIO_PD_IRQ);
+}
+
 void TPS_USBPD_delayMS(uint32_t delayInMS)
 {
     vTaskDelay(delayInMS / portTICK_PERIOD_MS);
